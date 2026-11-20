@@ -719,3 +719,18 @@ name = "Dq9QuestLoad"
 address = 0x020AB4C0      # bl 0x02094D7C, after the 0xA0 copy into mgr
 mode = "arm"
 name = "Dq9QuestLoad"
+
+# Gathering spots after a Continue. The spots live in the save (100 words at
+# save + 0x5CDC: countdown, item mask, interval...). When the field starts
+# without a quick save to resume (ov17 0x0218B710 -> 0x0208EA20),
+# 0x0208EC14 empties every spot that still has items and restarts its
+# countdown at a tenth of the normal wait, so a church save loses the
+# unpicked materials (they come back later, re-rolled). The hook skips that
+# call, so the spots stay as they were saved, as after a quick save.
+# Handler: src/hooks/gathering_spots.cpp.
+[[hook]]
+address = 0x0208EA6C      # bl 0x0208EC14 ; b 0x0208EBF4 (epilogue)
+mode = "arm"
+name = "Dq9KeepGatheringSpots"
+on_true = "jump"
+jump_address = 0x0208EA70 # b 0x0208EBF4
