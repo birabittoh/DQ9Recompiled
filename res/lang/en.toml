@@ -10,6 +10,9 @@ export_save = "Export save file"
 # Shown when a newer release is out (src/hooks/options_row.cpp); {} is
 # its version.
 update = "Update to {}"
+# The notice while it downloads; {version} and {percent} are filled in.
+# The notice font has no accents: they are dropped.
+downloading = "Downloading {version} {percent}"
 # The last row: closes the game (src/hooks/options_row.cpp).
 quit = "Quit game"
 

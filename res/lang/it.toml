@@ -5,6 +5,7 @@ options = "Opzioni"
 import_save = "Importa salvataggio"
 export_save = "Esporta salvataggio"
 update = "Aggiorna a {}"
+downloading = "Download di {version} {percent}"
 quit = "Esci dal gioco"
 
 [camp_menu]

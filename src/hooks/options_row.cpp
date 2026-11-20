@@ -567,6 +567,24 @@ std::string UpdateRowText(const std::string& version) {
     return text;
 }
 
+// The frontend's notice while the update downloads, in the game's language.
+// The notice font is plain ASCII, so an accented letter ("<'e>" in the
+// game's text) is shown without its accent.
+std::string DownloadNoticeText() {
+    const std::string text = dq9::Tr("main_menu", "downloading",
+                                     bus_read_u8(dq9::kGameTextLanguage));
+    std::string plain;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '<' && i + 3 < text.size() && text[i + 3] == '>') {
+            plain += text[i + 2];
+            i += 3;
+        } else {
+            plain += text[i];
+        }
+    }
+    return plain;
+}
+
 // The main menu's update row was chosen: ask for the update and wait.
 bool UpdateRowChosen(uint32_t scene) {
     const uint32_t grid = FindTyped(
@@ -578,6 +596,7 @@ bool UpdateRowChosen(uint32_t scene) {
         bus_read_u16(kMainGridArray + 2u * row) != kUpdateCell)
         return false;
     if (!UpdateRowVersion().empty()) {
+        nds_title_update_set_download_text(DownloadNoticeText());
         nds_title_update_install();
         g_update = UpdateWait{};
         g_update.waiting = true;
