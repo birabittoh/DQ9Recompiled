@@ -1,0 +1,19 @@
+# Heap leak in the background file loader (handler src/hooks/heap_leak.cpp).
+#
+# After each file it loads, 0x022A21A8 folds OS_GetLowEntropyData
+# (0x020C9B20) into two bits and, when they are 0 (about one load in four),
+# allocates 8 bytes from the main heap (0x02012D98 on 0x02114E20) and drops
+# the pointer: the block is never freed, so the heap slowly fragments. The
+# hook makes the test see a nonzero value, so the bne skips the allocation.
+# r0 is dead afterwards (0x020D971C reloads it first thing).
+version = 1
+
+[program]
+bank = "dq9_arm9_ov034"
+sha1 = "2279aae55fde44b1ca8225db58b7cf7a0ed713e4"
+
+[[hook]]
+address = 0x022A2868      # tst r0, #0xFF ; bne 0x022A287C  (r0 = hash & 3)
+mode = "arm"
+name = "Dq9LoaderSkipHeapLeak"
+registers = ["r0"]
