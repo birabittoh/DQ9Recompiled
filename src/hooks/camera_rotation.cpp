@@ -16,6 +16,10 @@
 // both turn buttons at once holds L+R, which recenters the camera as on a
 // pad. The runner's fast-forward toggle shows at the top center whenever
 // the option is on.
+//
+// The pad's right stick is L and R too, everywhere in the game: left and
+// right hold L and R, pressing it holds both (which recenters the field
+// camera); L and R still work. Up and down on it still zoom (Camera zoom).
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -346,6 +350,9 @@ const NdsTouchButtonSpec kLand = {
     LandShown,
 };
 
+// The right stick is L and R (nds_title_camera_stick), always.
+bool CameraStickActive() { return true; }
+
 bool FastForwardShown() {
     return nds_title_setting_value(kCameraButtonsId) != 0;
 }
@@ -368,6 +375,9 @@ bool RegisterButtons() {
 }
 
 const bool kButtonsRegistered = RegisterButtons();
+
+const bool kCameraStickBound =
+    (nds_title_set_camera_stick(CameraStickActive, kKeyL, kKeyR), true);
 
 }  // namespace
 

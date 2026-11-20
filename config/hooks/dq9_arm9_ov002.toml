@@ -51,10 +51,10 @@ name = "Dq9CampOptionsSize"
 registers = ["r4", "r6"]
 
 [[hook]]
-address = 0x0215F53C      # mov r1, r0 (r0 = the list window's title)
+address = 0x0215F53C      # mov r1, r0 (r0 = the list window's title, r10 = camp)
 mode = "arm"
 name = "Dq9CampOptionsTitle"
-registers = ["r0"]
+registers = ["r0", "r10"]
 
 [[hook]]
 address = 0x0215F5E4      # mov r2, r0 (r0 = the text of entry r7, code r8)

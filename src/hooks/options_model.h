@@ -20,20 +20,41 @@
 
 namespace dq9::options {
 
+// A page is a section path: "" the categories, "Controls" a category,
+// "Controls/Keyboard" one of its own pages. A page lists its sub-pages
+// (Category rows, to open them), then its options.
 struct Row {
     enum class Kind { Category, Item, Back } kind = Kind::Back;
-    std::string section;   // Category
+    std::string section;   // Category: the page it opens
     NdsTitleMenuRow item;  // Item
 };
 
 struct Model {
-    std::string section;  // "" = the categories page
+    std::string section;  // the page shown
     std::vector<Row> rows;
     std::map<std::string, uint32_t> cursor;  // per page
+    // A page with more rows than fit (or with a break in kLayout) shows them
+    // a part at a time: the part shown, per page, and (BuildRows) how many
+    // parts the page has and the most rows a part has, Back included.
+    std::map<std::string, uint32_t> part;
+    uint32_t parts = 1;
+    uint32_t tallest = 0;
     // Values asked for and not yet in the frontend's rows.
     std::map<std::string, int> pending;
     std::string signature;  // of the rows as the page last drew them
 };
+
+// The page `section` is in ("" for a category).
+inline std::string Parent(const std::string& section) {
+    const size_t slash = section.rfind('/');
+    return slash == std::string::npos ? std::string() : section.substr(0, slash);
+}
+
+// A page's own name: the last part of its path.
+inline std::string PageName(const std::string& section) {
+    const size_t slash = section.rfind('/');
+    return slash == std::string::npos ? section : section.substr(slash + 1);
+}
 
 inline std::string Slug(const std::string& text) {
     std::string out;
@@ -82,7 +103,16 @@ inline bool Hidden(const NdsTitleMenuRow& row) {
     return !row.enabled ||
            (row.type != NdsTitleMenuRowType::Bool &&
             row.type != NdsTitleMenuRowType::Int &&
-            row.type != NdsTitleMenuRowType::Choice);
+            row.type != NdsTitleMenuRowType::Choice &&
+            row.type != NdsTitleMenuRowType::Key);
+}
+
+// A row whose value left and right step (on the others they turn the part).
+inline bool Steps(const Row& row) {
+    return row.kind == Row::Kind::Item &&
+           (row.item.type == NdsTitleMenuRowType::Bool ||
+            row.item.type == NdsTitleMenuRowType::Int ||
+            row.item.type == NdsTitleMenuRowType::Choice);
 }
 
 // Shown but not changeable: the battle multipliers while visiting another
@@ -99,16 +129,20 @@ inline bool Locked(const NdsTitleMenuRow& row) {
 // or two:
 //   General   set once: language first, sound, Netplay
 //   Display   what the picture looks like, the frame rate first
-//   Controls  menus, camera and gamepad
-//   Quality of life  intros, text speed, quest limit, Zoom
+//   Controls  a page for the pointer (mouse and touch), one for the
+//             keyboard (the keys, in two parts: buttons, then the D-pad
+//             and fast-forward),
+//             and the gamepad layout
+//   Quality of life  intros, text speed, quest limit, Zoom, camera rotation
 //   Multipliers  battle damage, EXP, gold and drops
 // Only the category changes: the keys, and so settings.toml, stay as they
 // are. A row not named here (System, or one added later) comes after these
 // in the runtime menu's order, in the page PageSection picks; Hidden() runs
-// on the arranged rows.
+// on the arranged rows. `part` starts a new part of the page at that row.
 struct Placement {
     const char* key;
     const char* section;
+    bool part = false;
 };
 
 inline constexpr Placement kLayout[] = {
@@ -120,20 +154,34 @@ inline constexpr Placement kLayout[] = {
     {"display.fullscreen", "Display"},  // hidden on Android: always on
     {"title.fps_mode", "Display"},
     {"title.ui_size", "Display"},
+    {"title.camera_mode", "Display"},
     {"display.resolution_scale", "Display"},
     {"display.scaling", "Display"},
     {"display.second_screen_size", "Display"},
     {"display.show_fps", "Display"},
     {"display.smooth_3d", "Display"},  // never shown: fps_mode owns it
-    {"title.mouse_friendly", "Controls"},
-    {"title.camera_mode", "Controls"},
-    {"title.unlock_camera_rotation", "Controls"},
-    {"title.camera_buttons", "Controls"},
+    {"title.mouse_friendly", "Controls/Pointer"},
+    {"title.camera_buttons", "Controls/Pointer"},
+    // Only with a keyboard to bind, and not with --keyboard-bindings.
+    {"input.key_a", "Controls/Keyboard"},
+    {"input.key_b", "Controls/Keyboard"},
+    {"input.key_x", "Controls/Keyboard"},
+    {"input.key_y", "Controls/Keyboard"},
+    {"input.key_l", "Controls/Keyboard"},
+    {"input.key_r", "Controls/Keyboard"},
+    {"input.key_start", "Controls/Keyboard"},
+    {"input.key_select", "Controls/Keyboard"},
+    {"input.key_up", "Controls/Keyboard", true},
+    {"input.key_down", "Controls/Keyboard"},
+    {"input.key_left", "Controls/Keyboard"},
+    {"input.key_right", "Controls/Keyboard"},
+    {"input.key_fast_forward", "Controls/Keyboard"},  // also without the others
     {"input.gamepad_layout", "Controls"},  // hidden with custom bindings
     {"title.skip_intros", "Quality of life"},
     {"title.skip_text", "Quality of life"},
     {"title.unlimited_quests", "Quality of life"},
     {"title.zoom_indoors", "Quality of life"},
+    {"title.unlock_camera_rotation", "Quality of life"},
     {"title.mult_damage_dealt", "Multipliers"},
     {"title.mult_damage_taken", "Multipliers"},
     {"title.mult_exp", "Multipliers"},
@@ -147,6 +195,13 @@ inline std::string PageSection(const std::string& section) {
     if (section == "Game" || section == "Audio" || section == "Netplay")
         return "General";
     return section;
+}
+
+// Whether kLayout starts a new part of its page at `key`.
+inline bool StartsPart(const std::string& key) {
+    for (const Placement& place : kLayout)
+        if (key == place.key) return place.part;
+    return false;
 }
 
 // `rows` in the pages' order, with the pages' sections.
@@ -186,6 +241,9 @@ inline int Step(const NdsTitleMenuRow& row) {
 inline std::string ValueText(const Model& model, const NdsTitleMenuRow& row) {
     const int value = ValueOf(model, row);
     switch (row.type) {
+    case NdsTitleMenuRowType::Key:
+        if (value < 0) return Text("v_press_a_key", "Press a key");
+        return row.value_text.empty() ? Text("v_none", "None") : row.value_text;
     case NdsTitleMenuRowType::Bool:
         if (IsNetplayToggle(row))
             return value ? Text("v_online", "Online") : Text("v_local", "Local");
@@ -228,7 +286,7 @@ inline std::string AccountText(const std::string& label) {
 inline std::string RowText(const Model& model, const Row& row) {
     switch (row.kind) {
     case Row::Kind::Category:
-        return Text("cat_" + Slug(row.section), row.section);
+        return Text("cat_" + Slug(row.section), PageName(row.section));
     case Row::Kind::Item:
         if (IsNetplayAccount(row.item)) return AccountText(row.item.label);
         if (row.item.type == NdsTitleMenuRowType::Action)
@@ -251,6 +309,11 @@ inline std::string DescriptionText(const Row& row) {
             return Text("d_netplay_enabled", "") + " " +
                    Text("server_status", "Server status:") + " " +
                    Text("server_" + row.item.description, row.item.description);
+        // The keyboard's rows share theirs, but for one with its own.
+        if (row.item.type == NdsTitleMenuRowType::Key) {
+            const std::string own = Text("d_" + Slug(row.item.key), "");
+            return own.empty() ? Text("d_input_key", row.item.description) : own;
+        }
         return Text("d_" + Slug(row.item.key), row.item.description);
     default:
         return "";
@@ -292,8 +355,10 @@ inline std::vector<std::string> Wrap(const std::string& text, size_t line_chars,
     return lines;
 }
 
-// The rows of the model's page: at most `max_rows`, with a Back row at the
-// end when `back` is set.
+// The rows of the model's page, of the part shown: at most `max_rows`, with
+// a Back row at the end when `back` is set. A page with more is shown in
+// parts, as is one with a part break in kLayout; model.parts and
+// model.tallest tell how many there are and how tall the tallest is.
 inline void BuildRows(Model& model, size_t max_rows, bool back = true) {
     model.rows.clear();
     const std::vector<NdsTitleMenuRow> all = Arranged(nds_title_menu_rows());
@@ -303,25 +368,57 @@ inline void BuildRows(Model& model, size_t max_rows, bool back = true) {
         if (it != model.pending.end() && it->second == row.value)
             model.pending.erase(it);
     }
+    const std::string& page = model.section;
+    const std::string prefix = page.empty() ? std::string() : page + "/";
+    const size_t per_part = max_rows > (back ? 1u : 0u)
+        ? max_rows - (back ? 1u : 0u) : 1u;
+    std::vector<std::vector<Row>> parts(1);
     for (const NdsTitleMenuRow& row : all) {
-        if (Hidden(row) || model.rows.size() + (back ? 1 : 0) >= max_rows)
-            continue;
-        if (model.section.empty()) {
-            bool seen = false;
-            for (const Row& r : model.rows) seen |= r.section == row.section;
-            if (seen) continue;
-            Row r;
-            r.kind = Row::Kind::Category;
-            r.section = row.section;
-            model.rows.push_back(std::move(r));
-        } else if (row.section == model.section) {
-            Row r;
+        if (Hidden(row)) continue;
+        Row r;
+        if (row.section == page) {
             r.kind = Row::Kind::Item;
             r.item = row;
-            model.rows.push_back(std::move(r));
+            if (StartsPart(row.key) && !parts.back().empty())
+                parts.emplace_back();
+        } else if (row.section.compare(0, prefix.size(), prefix) == 0) {
+            // A row of a page under this one: that page's row, once.
+            const size_t slash = row.section.find('/', prefix.size());
+            r.kind = Row::Kind::Category;
+            r.section = row.section.substr(0, slash);
+            bool seen = false;
+            for (const std::vector<Row>& part : parts)
+                for (const Row& other : part)
+                    seen |= other.kind == Row::Kind::Category &&
+                            other.section == r.section;
+            if (seen) continue;
+        } else {
+            continue;
         }
+        if (parts.back().size() >= per_part) parts.emplace_back();
+        parts.back().push_back(std::move(r));
     }
+    model.parts = static_cast<uint32_t>(parts.size());
+    model.tallest = 0;
+    for (const std::vector<Row>& part : parts) {
+        const uint32_t rows = static_cast<uint32_t>(part.size() + (back ? 1 : 0));
+        if (rows > model.tallest) model.tallest = rows;
+    }
+    uint32_t& shown = model.part[page];
+    if (shown >= model.parts) shown = model.parts - 1;
+    model.rows = std::move(parts[shown]);
     if (back) model.rows.emplace_back();
+}
+
+// Shows the next (+1) or previous (-1) part of the page, wrapping. True when
+// the page has parts.
+inline bool TurnPart(Model& model, int direction) {
+    if (model.parts <= 1) return false;
+    uint32_t& shown = model.part[model.section];
+    shown = static_cast<uint32_t>(
+        (static_cast<int>(shown) + direction + static_cast<int>(model.parts)) %
+        static_cast<int>(model.parts));
+    return true;
 }
 
 // What the page shows (every row's text and description), to tell when the
@@ -375,6 +472,12 @@ inline bool Change(Model& model, const NdsTitleMenuRow& row, int direction) {
     case NdsTitleMenuRowType::Action:
         // Chosen only: left and right do not sign in or out.
         if (direction != 0 || !IsNetplayAccount(row)) return false;
+        nds_title_menu_run(row.key);
+        return true;
+    case NdsTitleMenuRowType::Key:
+        // Chosen: the frontend waits for the key (the row says so a frame
+        // later), and chosen again stops waiting.
+        if (direction != 0) return false;
         nds_title_menu_run(row.key);
         return true;
     default:

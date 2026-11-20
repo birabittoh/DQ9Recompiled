@@ -13,6 +13,13 @@
 //     again at the new page's size, one frame later;
 //   - a changed value only has the list window drawn again.
 // Left and right step the value under the cursor.
+//
+// A page in parts (the keyboard's keys) shows one part per list: L and R,
+// left and right on a row without a value, and the pen on the window's
+// bottom corners turn the part, which opens the list again as a new page
+// does, at the tallest part's size. The window shows the game's own page
+// arrows and "n/N" (its page indicator and arrows flag, as the Zoom list
+// sets them).
 #include <cstdint>
 #include <string>
 
@@ -48,6 +55,27 @@ constexpr uint32_t kPageCode = 0x100u;  // + the row, while a page is open
 constexpr uint32_t kPadHeld = 0x02114E30u;
 constexpr uint32_t kPadPrevious = 0x02114E32u;
 constexpr uint32_t kKeyRight = 0x010u, kKeyLeft = 0x020u;
+constexpr uint32_t kKeyR = 0x100u, kKeyL = 0x200u;
+
+// The window manager (camp + 0xEC8): +152 non-zero with windows up, +156
+// the windows (224 bytes each), +179 how many, +180 the next one's slot.
+constexpr uint32_t kWindowManager = 0xEC8u;
+constexpr uint32_t kWindowSize = 224u;
+// A window: s16 width, height, x, y in tiles; its id; flags (bit 3: draw the
+// page arrows, with the text); the page indicator (+216 bit 0 on, bit 1
+// redraw it), the page and the page count.
+constexpr uint32_t kWinWidth = 168u, kWinHeight = 170u;
+constexpr uint32_t kWinX = 172u, kWinY = 174u;
+constexpr uint32_t kWinId = 196u;
+constexpr uint32_t kWinFlags = 197u;
+constexpr uint8_t kWinArrows = 0x08u;
+constexpr uint32_t kWinIndicator = 216u;
+constexpr uint32_t kWinPage = 217u;
+constexpr uint32_t kWinPages = 218u;
+
+// The touch manager: +85 a press began this frame; where, as 0x02012A94
+// reads it.
+constexpr uint32_t kTouch = 0x02114E54u;
 
 // Free guest memory: the end of overlay slot 0 (0x021536E0 .. 0x021842A0),
 // far past overlay 2's image and bss (they end at 0x0216D3C0).
@@ -75,6 +103,7 @@ struct Camp : Model {
     bool reopening = false;     // the list is being opened by `reopen`
     bool redraw_list = false;   // draw the list window again
     int cursor_on_open = -1;    // where the reopened list puts its cursor
+    uint32_t polled = 0;        // frames, to look for changed rows now and then
 };
 
 Camp g_camp;
@@ -82,6 +111,69 @@ Camp g_camp;
 int16_t S16(uint32_t value) { return static_cast<int16_t>(value & 0xFFFFu); }
 
 uint32_t Language() { return bus_read_u8(dq9::kGameTextLanguage); }
+
+bool InMainRam(uint32_t address, uint32_t size) {
+    return address >= 0x02000000u && address + size <= 0x02400000u;
+}
+
+// Window `id` of the camp menu, as 0x0215B918 finds it: an open one, else
+// the slot the next window opens in. 0 for none.
+uint32_t CampWindow(uint32_t camp, uint32_t id) {
+    const uint32_t manager = camp + kWindowManager;
+    const uint32_t windows = bus_read_u32(manager + 156u);
+    if (!InMainRam(windows, kWindowSize)) return 0;
+    if (bus_read_u32(manager + 152u)) {
+        const uint32_t count = bus_read_u8(manager + 179u);
+        const uint32_t next = bus_read_u8(manager + 180u);
+        for (uint32_t i = 0; i < count && i != next; ++i) {
+            const uint32_t window = windows + kWindowSize * i;
+            if (bus_read_u8(window + kWinId) == id) return window;
+        }
+    }
+    const uint32_t window = windows + kWindowSize * bus_read_u8(manager + 180u);
+    return InMainRam(window, kWindowSize) ? window : 0;
+}
+
+// The page indicator and arrows of the list window, on for a page in parts
+// (0x02050410, 0x0205043C and 0x02050450 natively).
+// Left alone on a window that was never paged.
+void SetPaging(uint32_t window, uint32_t page, uint32_t pages) {
+    const bool on = pages > 1;
+    const uint8_t flags = bus_read_u8(window + kWinFlags);
+    if (!on && !(bus_read_u8(window + kWinIndicator) & 1u) &&
+        !(flags & kWinArrows))
+        return;
+    // As 0x02050410 writes it: the page byte too.
+    bus_write_u16(window + kWinIndicator, static_cast<uint16_t>(
+        (bus_read_u8(window + kWinIndicator) & 0xFEu) | (on ? 1u : 0u) | 2u));
+    bus_write_u8(window + kWinPage, static_cast<uint8_t>(on ? page : 0u));
+    bus_write_u8(window + kWinPages, static_cast<uint8_t>(on ? pages : 0u));
+    bus_write_u8(window + kWinFlags, on ? flags | kWinArrows : flags & ~kWinArrows);
+}
+
+// -1 or +1 when the pen was just put on the list window's left or right
+// bottom corner (as 0x02161B98 tests the paged lists'), else 0.
+int PenTurn(uint32_t camp) {
+    if (!bus_read_u8(kTouch + 85u)) return 0;
+    int x = 0, y = 0;
+    if (bus_read_u16(kTouch + 36u)) {
+        x = bus_read_u16(kTouch + 32u);
+        y = bus_read_u16(kTouch + 34u);
+    } else {
+        x = static_cast<int>(bus_read_u32(kTouch + 56u));
+        y = static_cast<int>(bus_read_u32(kTouch + 60u));
+    }
+    const uint32_t window = CampWindow(camp, kWindowMisc);
+    if (!window || bus_read_u8(window + kWinId) != kWindowMisc) return 0;
+    const int left = 8 * static_cast<int16_t>(bus_read_u16(window + kWinX));
+    const int right = left + 8 * static_cast<int16_t>(bus_read_u16(window + kWinWidth));
+    const int bottom = 8 * (static_cast<int16_t>(bus_read_u16(window + kWinY)) +
+                            static_cast<int16_t>(bus_read_u16(window + kWinHeight)));
+    if (y < bottom - 16 || y >= bottom) return 0;
+    if (x >= left && x < left + 16) return -1;
+    if (x >= right - 16 && x < right) return 1;
+    return 0;
+}
 
 // The window text is markup: outside a <tag>, a comma and an apostrophe
 // are written as the game's own text writes them. The description window
@@ -102,7 +194,10 @@ std::string Markup(const std::string& text, bool escape_percent = false) {
 }
 
 // No Back row: B, or the pen outside the window, goes up one page.
-void Rebuild() { BuildRows(g_camp, kMaxEntries, false); }
+void Rebuild() {
+    BuildRows(g_camp, kMaxEntries, false);
+    g_camp.signature = Signature(g_camp);
+}
 
 void ShowPage(const std::string& section) {
     g_camp.open = true;
@@ -119,8 +214,21 @@ void GoUp() {
         g_camp.open = false;
         g_camp.cursor_on_open = g_camp.options_index;
     } else {
-        ShowPage("");
+        ShowPage(Parent(g_camp.section));
     }
+}
+
+// Shows the next (+1) or previous (-1) part of the page, the cursor on the
+// same row or the last. False for a page with one part.
+bool Turn(int direction, int cursor) {
+    if (!TurnPart(g_camp, direction)) return false;
+    Rebuild();
+    uint32_t& at = g_camp.cursor[g_camp.section];
+    at = cursor < 0 ? 0u : static_cast<uint32_t>(cursor);
+    if (at >= g_camp.rows.size())
+        at = g_camp.rows.empty() ? 0u : static_cast<uint32_t>(g_camp.rows.size() - 1);
+    g_camp.cursor_on_open = static_cast<int>(at);
+    return true;
 }
 
 }  // namespace
@@ -154,24 +262,31 @@ NDS_TITLE_HOOK void Dq9CampOptionsSize(uint32_t* r4, uint32_t* r6) {
         ? static_cast<uint32_t>(g_camp.rows.size()) : g_camp.misc_count;
     if (g_camp.open) bus_write_u16(*r4 + kNextWidth, kPageWidth);
     // A page's window is sized from its own rows, so a short one (the
-    // categories) keeps the margin under its last row.
+    // categories) keeps the margin under its last row; a page in parts from
+    // its tallest part, with room for the arrows and "n/N" under it.
+    const bool paged = g_camp.open && g_camp.parts > 1;
+    const uint32_t shown = paged ? g_camp.tallest : count;
     if (count > 8u || (g_camp.open && count > 0u)) {
         // One more tile on a page: the margin under the last row.
         bus_write_u16(*r4 + kNextHeight, static_cast<uint16_t>(
-            3u + 2u * count + (g_camp.open ? 1u : 0u)));
+            3u + 2u * shown + (paged ? 2u : g_camp.open ? 1u : 0u)));
         bus_write_u16(*r4 + kNextLines, static_cast<uint16_t>(
             static_cast<int>(bus_read_u8(*r6 + kLayoutLines)) +
             static_cast<int>(count) - 7));
     }
 }
 
-// 0x0215F53C in the list window's builder, r0 = its title ("Misc."): a
-// page shows its own.
-NDS_TITLE_HOOK void Dq9CampOptionsTitle(uint32_t* r0) {
+// 0x0215F53C in the list window's builder, r0 = its title ("Misc."), r10 =
+// the camp menu: a page shows its own, and a page in parts the arrows and
+// "n/N".
+NDS_TITLE_HOOK void Dq9CampOptionsTitle(uint32_t* r0, uint32_t* r10) {
+    if (const uint32_t window = CampWindow(*r10, kWindowMisc))
+        SetPaging(window, g_camp.open ? g_camp.part[g_camp.section] : 0u,
+                  g_camp.open ? g_camp.parts : 0u);
     if (!g_camp.open) return;
     const std::string title = g_camp.section.empty()
         ? std::string(dq9::Tr("main_menu", "options", Language()))
-        : Text("cat_" + Slug(g_camp.section), g_camp.section);
+        : Text("cat_" + Slug(g_camp.section), PageName(g_camp.section));
     WriteString(kTitleText, kTitleTextSize, Markup(title));
     *r0 = kTitleText;
 }
@@ -240,11 +355,34 @@ NDS_TITLE_HOOK bool Dq9CampOptionsFrame(uint32_t* r8) {
         return true;
     }
     if (!g_camp.open) return false;
+    // Rows the frontend changed on its own (a key row waiting for its key,
+    // then bound) draw the list again; a few times a second is enough.
+    if (++g_camp.polled % 10 == 0) {
+        Camp probe = g_camp;
+        BuildRows(probe, kMaxEntries, false);
+        if (Signature(probe) != g_camp.signature &&
+            probe.rows.size() == g_camp.rows.size()) {
+            Rebuild();
+            g_camp.redraw_list = true;
+        }
+    }
     const uint32_t held = bus_read_u16(kPadHeld);
     const uint32_t pressed = held & ~bus_read_u16(kPadPrevious);
     const int direction = (pressed & kKeyLeft) ? -1
                         : (pressed & kKeyRight) ? 1 : 0;
     const int cursor = S16(bus_read_u16(*r8 + kCampMiscCursor));
+    // A turn of the part opens the list again (Dq9CampOptionsExit).
+    if (g_camp.parts > 1) {
+        int turn = (pressed & kKeyL) ? -1 : (pressed & kKeyR) ? 1 : PenTurn(*r8);
+        if (turn == 0 && direction != 0 &&
+            (cursor < 0 || static_cast<size_t>(cursor) >= g_camp.rows.size() ||
+             !Steps(g_camp.rows[static_cast<size_t>(cursor)])))
+            turn = direction;
+        if (turn != 0 && Turn(turn, cursor)) {
+            g_camp.reopen = true;
+            return true;
+        }
+    }
     if (direction == 0 || cursor < 0 ||
         static_cast<size_t>(cursor) >= g_camp.rows.size())
         return false;

@@ -7,7 +7,8 @@
 // The pages are made of the title scene's own widgets: entry cells drawn in
 // its full-screen panel (212), picked through the main menu's grid, and the
 // description of the row under the cursor in the main menu's panel (210),
-// moved to the bottom of the screen. The
+// moved to the bottom of the screen. There is no Back row: B, or the pen on
+// the description, goes up a page. The
 // hook on the row's handler (0x0216D6A0) runs when a row is chosen, when B
 // is pressed and when left or right is pressed (the grid sends all three
 // to the handler), and calls the game's functions it needs one after the
@@ -16,6 +17,12 @@
 //
 // The rows, their values and their translated labels come from
 // options_model.h, which the camp menu's Options row shares.
+//
+// A page in parts (the keyboard's keys) uses the game's own paging: the
+// page's panel draws the arrows and "n/N" at its bottom when it is marked
+// paged, and the grid turns the part when the pen taps an arrow (and runs
+// the handler); L and R, and left and right on a row without a value, turn
+// it too.
 //
 // The main menu also gets a save row above Options: "Import save file"
 // when there is no save, "Export save file" when there is one. It is one
@@ -88,8 +95,13 @@ constexpr uint32_t kGridRedraw = 0x38u;  // u32: move the cursor sprite
 constexpr uint32_t kGridHandlers = 0x3Cu;  // u16s up to 0x5C: labels/handlers
 constexpr uint32_t kGridHandlersEnd = 0x5Cu;
 constexpr uint32_t kGridOnB = 0x46u;      // handler on B
+constexpr uint32_t kGridOnPart = 0x48u;   // handler run when the pen turns
 constexpr uint32_t kGridOnRight = 0x54u;  // handler on right
 constexpr uint32_t kGridOnLeft = 0x56u;   // handler on left
+constexpr uint32_t kGridOnL = 0x58u;      // handler on L
+constexpr uint32_t kGridOnR = 0x5Au;      // handler on R
+constexpr uint32_t kGridPart = 0x5Cu;     // s16: the part shown
+constexpr uint32_t kGridParts = 0x5Eu;    // s16: how many (the pen wraps)
 constexpr uint32_t kGridSavedBegin = 0x20u;
 constexpr uint32_t kGridSavedEnd = 0x64u;
 
@@ -110,6 +122,11 @@ constexpr uint32_t kSceneCursorDirty = 0x1C8u;
 
 // Panel: its window object is at +0x20; +197 bit 0 of that is "open".
 constexpr uint32_t kPanelWindowOpen = 0x20u + 197u;
+// A paged panel (flag bit 2) gets, when 0x021F7EB8 opens it with more than
+// one page, the arrows and "page + 1 / pages" at its bottom.
+constexpr uint8_t kPanelPaged = 0x04u;
+constexpr uint32_t kPanelPage = 0x104u;   // s16
+constexpr uint32_t kPanelPages = 0x106u;  // s16
 
 constexpr uint32_t kMainMenuLayer = 210u;
 constexpr uint32_t kFileInfoPanel = 211u;
@@ -127,6 +144,7 @@ constexpr uint32_t kPadHeld = 0x02114E30u;
 constexpr uint32_t kPadPrevious = 0x02114E32u;
 constexpr uint32_t kKeyA = 0x001u, kKeyB = 0x002u;
 constexpr uint32_t kKeyRight = 0x010u, kKeyLeft = 0x020u;
+constexpr uint32_t kKeyR = 0x100u, kKeyL = 0x200u;
 
 // The main menu (ov4 bss): +3 the mode that picks its rows (1 and 5: a
 // save, rows 1; 2: no save, rows 2).
@@ -255,6 +273,7 @@ struct Menu : Model {
     uint32_t grid = 0;
     uint32_t described = ~0u;  // the row the description is of
     uint32_t polled = 0;       // frames, to look for changed rows now and then
+    uint32_t height = 0;       // tiles: the page's panel as last opened
     uint8_t saved_grid[kGridSavedEnd - kGridSavedBegin] = {};
 };
 
@@ -275,6 +294,16 @@ uint32_t FindTyped(uint32_t scene, uint32_t id, uint32_t type) {
 
 uint32_t PageHeight(uint32_t rows) {
     return (kRowY + kRowPitch * (rows ? rows : 1) + 9 + 7) / 8;
+}
+
+// Paging off on the page's panel, which the version line uses too.
+void ClearPaging(uint32_t scene) {
+    if (const uint32_t panel = FindTyped(scene, kPagePanel, kTypePanel)) {
+        bus_write_u8(panel + kWidgetFlags,
+                     bus_read_u8(panel + kWidgetFlags) & ~kPanelPaged);
+        bus_write_u16(panel + kPanelPage, 0u);
+        bus_write_u16(panel + kPanelPages, 0u);
+    }
 }
 
 // Writes the description of the row under the cursor into its cells and
@@ -299,10 +328,9 @@ void ShowDescription() {
     }
     const uint32_t panel = FindTyped(scene, kDescPanel, kTypePanel);
     if (!panel) return;
-    const uint32_t rows = static_cast<uint32_t>(g_menu.rows.size());
     Call(kFnPanelClose, {panel});
     Call(kFnPanelOpen,
-         {panel, scene, kPageVram + kPageWidth * PageHeight(rows) * 32u, 1u,
+         {panel, scene, kPageVram + kPageWidth * g_menu.height * 32u, 1u,
           kDescTop, kPageWidth, kDescHeight, 0u, 1u, 0u});
 }
 
@@ -310,7 +338,7 @@ void ShowDescription() {
 // panel at the page's height, which draws them.
 void ShowPage() {
     const uint32_t scene = g_menu.scene, grid = g_menu.grid;
-    BuildRows(g_menu, kMaxRows);
+    BuildRows(g_menu, kMaxRows, false);
     g_menu.signature = Signature(g_menu);
     uint32_t count = 0;
     for (uint32_t i = 0; i < kMaxRows; ++i) {
@@ -333,15 +361,7 @@ void ShowPage() {
                          bus_read_u8(cell + kWidgetFlags) | kHidden);
         }
     }
-    if (count < g_menu.rows.size()) {
-        // Keep "Back" as the last row that fits.
-        if (count) {
-            g_menu.rows[count - 1] = Row{};
-            WriteString(kRowText + (count - 1) * kRowTextSize, kRowTextSize,
-                        RowText(g_menu, g_menu.rows[count - 1]));
-        }
-        g_menu.rows.resize(count);
-    }
+    if (count < g_menu.rows.size()) g_menu.rows.resize(count);
     for (uint32_t i = count; i < kMaxRows; ++i)
         bus_write_u16(kGridArray + 2u * i, 0u);
 
@@ -357,14 +377,36 @@ void ShowPage() {
     bus_write_u16(grid + kGridOnB, kOptionsHandler);
     bus_write_u16(grid + kGridOnLeft, kOptionsHandler);
     bus_write_u16(grid + kGridOnRight, kOptionsHandler);
+    // In parts: the pen on the arrows and L and R turn them.
+    const bool paged = g_menu.parts > 1;
+    const uint32_t part = g_menu.part[g_menu.section];
+    bus_write_u16(grid + kGridPart, static_cast<uint16_t>(paged ? part : 0u));
+    bus_write_u16(grid + kGridParts,
+                  static_cast<uint16_t>(paged ? g_menu.parts : 0u));
+    if (paged) {
+        bus_write_u16(grid + kGridOnPart, kOptionsHandler);
+        bus_write_u16(grid + kGridOnL, kOptionsHandler);
+        bus_write_u16(grid + kGridOnR, kOptionsHandler);
+    }
     bus_write_u32(grid + kGridRedraw, 1u);
     bus_write_u32(scene + kSceneCursorDirty, 1u);
 
     const uint32_t panel = FindTyped(scene, kPagePanel, kTypePanel);
     if (!panel) return;
+    // Every part as tall as the tallest, with a tile more for the arrows
+    // and "n/N" under the last row.
+    g_menu.height = paged ? PageHeight(g_menu.tallest) + 1u : PageHeight(count);
+    if (paged) {
+        bus_write_u8(panel + kWidgetFlags,
+                     bus_read_u8(panel + kWidgetFlags) | kPanelPaged);
+        bus_write_u16(panel + kPanelPage, static_cast<uint16_t>(part));
+        bus_write_u16(panel + kPanelPages, static_cast<uint16_t>(g_menu.parts));
+    } else {
+        ClearPaging(scene);
+    }
     Call(kFnPanelClose, {panel});
     Call(kFnPanelOpen, {panel, scene, kPageVram, 1u, 1u, kPageWidth,
-                        PageHeight(count), 0u, 1u, 0u});
+                        g_menu.height, 0u, 1u, 0u});
     Then([scene](uint32_t) {
         ShowDescription();
         bus_write_u32(scene + kSceneCursorDirty, 1u);
@@ -385,6 +427,15 @@ void RestoreGrid() {
     if (!grid || bus_read_u32(grid + kGridCells) != kGridArray) return;
     for (uint32_t i = 0; i < sizeof(g_menu.saved_grid); ++i)
         bus_write_u8(grid + kGridSavedBegin + i, g_menu.saved_grid[i]);
+}
+
+// The page is gone: the grid goes back to the main menu's and the panel
+// stops paging.
+void Forget() {
+    RestoreGrid();
+    if (g_menu.scene) ClearPaging(g_menu.scene);
+    g_menu.open = false;
+    g_menu.closing = false;
 }
 
 void Open(uint32_t scene) {
@@ -457,9 +508,7 @@ void RequestClose() {
 // its own label that rebuilds the main menu.
 void Close() {
     const uint32_t scene = g_menu.scene;
-    RestoreGrid();
-    g_menu.open = false;
-    g_menu.closing = false;
+    Forget();
     for (const uint32_t id : {kPagePanel, kDescPanel}) {
         if (const uint32_t panel = FindTyped(scene, id, kTypePanel))
             Call(kFnPanelClose, {panel});
@@ -592,6 +641,36 @@ bool SaveRowChosen(uint32_t scene) {
     return true;
 }
 
+// Up one page, as B: from the categories back to the main menu.
+void GoBack() {
+    if (g_menu.section.empty()) {
+        RequestClose();
+    } else {
+        g_menu.section = Parent(g_menu.section);
+        ShowPage();
+    }
+}
+
+// The pen was just put on the description's panel (there is no Back row:
+// that goes up a page too). The touch manager: +85 a press began this
+// frame, its position as 0x02012A94 reads it.
+constexpr uint32_t kTouch = 0x02114E54u;
+
+bool DescriptionTouched() {
+    if (!bus_read_u8(kTouch + 85u)) return false;
+    int x = 0, y = 0;
+    if (bus_read_u16(kTouch + 36u)) {
+        x = bus_read_u16(kTouch + 32u);
+        y = bus_read_u16(kTouch + 34u);
+    } else {
+        x = static_cast<int>(bus_read_u32(kTouch + 56u));
+        y = static_cast<int>(bus_read_u32(kTouch + 60u));
+    }
+    const int left = 8, top = 8 * static_cast<int>(kDescTop);
+    return x >= left && x < left + 8 * static_cast<int>(kPageWidth) &&
+           y >= top && y < top + 8 * static_cast<int>(kDescHeight);
+}
+
 void Event(uint32_t scene) {
     if (g_menu.open && (scene != g_menu.scene || !PageShown(scene))) {
         // The scene left the page on its own (a reset, another screen). If
@@ -599,9 +678,7 @@ void Event(uint32_t scene) {
         // sent this event: give the grid back and do nothing else.
         const bool stale = g_menu.grid &&
             bus_read_u32(g_menu.grid + kGridCells) == kGridArray;
-        RestoreGrid();
-        g_menu.open = false;
-        g_menu.closing = false;
+        Forget();
         if (stale) return;
     }
     // An event while waiting for an update means the scene stopped running
@@ -618,15 +695,26 @@ void Event(uint32_t scene) {
     const uint32_t pressed = held & ~bus_read_u16(kPadPrevious);
     const uint32_t index = bus_read_u16(g_menu.grid + kGridRow);
     g_menu.cursor[g_menu.section] = index;
+    // The pen turned the part (the grid did, on an arrow).
+    if (g_menu.parts > 1) {
+        const int16_t turned =
+            static_cast<int16_t>(bus_read_u16(g_menu.grid + kGridPart));
+        uint32_t& part = g_menu.part[g_menu.section];
+        if (turned >= 0 && static_cast<uint32_t>(turned) < g_menu.parts &&
+            static_cast<uint32_t>(turned) != part) {
+            part = static_cast<uint32_t>(turned);
+            ShowPage();
+            return;
+        }
+    }
     int direction = 0;
     if (!(pressed & kKeyA)) {
         if (pressed & kKeyB) {
-            if (g_menu.section.empty()) {
-                RequestClose();
-            } else {
-                g_menu.section.clear();
-                ShowPage();
-            }
+            GoBack();
+            return;
+        }
+        if (held & (kKeyL | kKeyR)) {
+            if (TurnPart(g_menu, (held & kKeyL) ? -1 : 1)) ShowPage();
             return;
         }
         if (held & kKeyLeft) direction = -1;
@@ -634,6 +722,11 @@ void Event(uint32_t scene) {
     }
     if (index >= g_menu.rows.size()) return;
     const Row row = g_menu.rows[index];
+    // Left and right on a row without a value turn the part.
+    if (direction != 0 && !Steps(row)) {
+        if (TurnPart(g_menu, direction)) ShowPage();
+        return;
+    }
     switch (row.kind) {
     case Row::Kind::Category:
         if (direction != 0) break;
@@ -644,13 +737,6 @@ void Event(uint32_t scene) {
         if (Change(g_menu, row.item, direction)) ShowPage();
         break;
     default:
-        if (direction != 0) break;
-        if (g_menu.section.empty()) {
-            RequestClose();
-        } else {
-            g_menu.section.clear();
-            ShowPage();
-        }
         break;
     }
 }
@@ -665,9 +751,7 @@ void Frame(uint32_t scene) {
     }
     if (!g_menu.open) return;
     if (scene != g_menu.scene || !PageShown(scene)) {
-        RestoreGrid();
-        g_menu.open = false;
-        g_menu.closing = false;
+        Forget();
         return;
     }
     bus_write_u32(scene + kSceneIdleTime, 0u);
@@ -679,11 +763,15 @@ void Frame(uint32_t scene) {
     // server's state) redraw the page; a few times a second is enough.
     if (++g_menu.polled % 10 == 0) {
         Model probe = g_menu;
-        BuildRows(probe, kMaxRows);
+        BuildRows(probe, kMaxRows, false);
         if (Signature(probe) != g_menu.signature) {
             ShowPage();
             return;
         }
+    }
+    if (DescriptionTouched()) {
+        GoBack();
+        return;
     }
     if (bus_read_u16(g_menu.grid + kGridRow) != g_menu.described)
         ShowDescription();
@@ -864,6 +952,8 @@ void QueueBuilderCalls(uint32_t scene, uint32_t rows) {
         // Shown again if a page hid it and the scene left without closing.
         if (const uint32_t cell = FindTyped(scene, kVersionCell, kTypeCell))
             bus_write_u8(cell + kWidgetFlags, bus_read_u8(cell + kWidgetFlags) & ~kHidden);
+        // No arrows: a page in parts may have left the panel paged.
+        ClearPaging(scene);
     }});
     q.push_back({kFnPanelClose, {panel}, nullptr});
     q.push_back({kFnPanelOpen,
