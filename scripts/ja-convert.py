@@ -25,7 +25,9 @@ What each YDQP data file becomes:
   * a per-language image: YDQJ's counterpart as it is (scripts/ja-map.py
     finds it); any other per-language file keeps YDQP's English one;
   * anything else not per language: YDQJ's counterpart where the two
-    agree, YDQP's bytes elsewhere; the movies YDQJ's own.
+    agree, YDQP's bytes elsewhere; the movies YDQJ's own;
+  * pack/font.gp2 (which YDQP never reads from): YDQJ's, followed by
+    YDQJ's base fonts (FONT_FILE below), for the runner's Japanese font.
 
 Plan format (little-endian; LEB128 numbers in the ops):
     "DQ9J", u32 version, YDQJ's image SHA-1, YDQP's image SHA-1
@@ -494,6 +496,12 @@ def gpc2_ops(pal_ref, pal_data, contents):
 # the Japanese release (their own subtitles and credits).
 JP_AS_IT_IS = {".mods"}
 
+# The Japanese fonts: FONT_FILE gets FONT_BASE appended, then 16 bytes:
+# FONT_TRAILER, u32 offset and u32 size of FONT_BASE's copy.
+FONT_FILE = "data/pack/font.gp2"
+FONT_BASE = "data/pack_lv5/font_lv5.gp2"
+FONT_TRAILER = b"DQ9JFONT"
+
 # Per-language units that are not text tables are taken from YDQJ only when
 # they are images (their text drawn in Japanese). Anything else keeps
 # YDQP's English one: YDQJ's counterparts of the rest are other formats
@@ -663,8 +671,26 @@ class Planner:
         self.built[unit] = out
         return out
 
+    def font_ops(self, path):
+        """pack/font.gp2 (the same in both releases; YDQP reads none of its
+        members) followed by YDQJ's base fonts, pack_lv5/font_lv5.gp2
+        (YDQP's is a stub), which the runner's Japanese font is made from
+        (src/hooks/ja_font.cpp). FONT_TRAILER says where they are."""
+        out = Ops()
+        out.extend(self.jp_whole(path))
+        out.pad(16)
+        at = out.size
+        out.extend(self.jp_whole(FONT_BASE))
+        size = out.size - at
+        out.pad(16)
+        out.r(FONT_TRAILER + struct.pack("<II", at, size))
+        self.stats["files: fonts"] += 1
+        return out
+
     def file_ops(self, path):
         """Ops for a PAL data file (relative to data/)."""
+        if path == FONT_FILE:
+            return self.font_ops(path)
         e = self.pal.idx[path]
         jpath = self.jp.sha.get(e["sha1"])
         if jpath:
