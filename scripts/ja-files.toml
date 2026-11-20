@@ -25,7 +25,8 @@
 "data/ani/cell_jrm.gp2::cell_jrm.pac" = "data/ani/cell_jr_ms.pac"
 "data/ani/clmm.gp2::clmm.pac" = "data/ani/cell_mm.pac"
 "data/ani/comb.gp2::comb.pac" = "data/ani/com_base.pac"
-"data/ani/gl.gp2::gl.pac" = "data/ani/obj_guestlist.pac"
+# Not obj_guestlist.pac (another format): keeps PAL's.
+"data/ani/gl.gp2::gl.pac" = ""
 "data/ani/obj_shop.gp2::obj_shop.pac" = "data/ani/obj_shop3.pac"
 "data/ani/odqa.gp2::odqa.pac" = "data/ani/obj_dqa.pac"
 "data/ani/oiij.gp2::oiij.pac" = "data/ani/obj_iij.pac"
@@ -179,6 +180,8 @@
 "data/bin/menu/bm_shop.gp2::bm_shop.bin" = "data/bin/menu/bgmake_shop.pac::bgmake_shop_string.bin"
 "data/bin/menu/bm_sml.gp2::bm_sml.bin" = "data/bin/menu/bgmake_sml.pac::bgmake_sml_string.bin"
 "data/bin/menu/bm_tuyo.gp2::bm_tuyo.bin" = "data/bin/menu/bgmake_tuyosa.pac::bgmake_tuyosa_string.bin"
+# Same name in JP, another format.
+"data/chara_sub/tobe.pac" = ""
 
 [pal_only]
 # Unit prefixes with no JP counterpart: debug-only text.

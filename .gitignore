@@ -27,6 +27,8 @@ __pycache__/
 /src/hooks/lang.generated.h
 # scripts/gen-map-names.py output (names from the ROM).
 /src/hooks/map_names.generated.h
+# scripts/build.py output: the Japanese data plan (scripts/ja-convert.py).
+/src/hooks/ja_plan.generated.inc
 # scripts/build.py --package and scripts/package-mac.py output.
 /pkg/
 /pkg-dmg/
