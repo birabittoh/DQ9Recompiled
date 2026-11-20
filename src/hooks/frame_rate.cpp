@@ -120,6 +120,32 @@ NDS_TITLE_HOOK void Dq9FrameRate(uint32_t* r0, uint32_t* r7) {
     if (draw60) *r7 = 1u - *r0;
 }
 
+namespace {
+
+// ctx + 0x3B8: the milliseconds the last pass took (0x02010160).
+constexpr uint32_t kPassMs = 0x3B8u;
+
+}  // namespace
+
+// The battle's slow motion (a reflected spell, Bounce, Mirror Armour...):
+// ov025 starts it through 0x02163440(battle, scale, length ms, delay ms),
+// e.g. scale 0xCC (5% speed) for 500 ms. Every pass, ov000 0x02160620 works
+// out the real time that passed as
+//
+//     (int)((float)ctx[0x3B4] / (scale / 4096.0f))
+//
+// where ctx+0x3B4 is the pass's milliseconds times the scale, already cut to
+// an integer (0x02010160). At 30 images a second that is (int)(33 * 0.05) =
+// 1, so 20 ms; at 60 it is (int)(16 * 0.05) = 0, the slow motion never runs
+// out and the battle stays frozen. At 60 FPS the hook gives the real
+// milliseconds of the pass (ctx+0x3B8) instead.
+//
+// Before `add r2, r7, #0x6E00` at 0x02160A10, right after the float to int
+// call: r0 = the milliseconds counted, r4 = ctx.
+NDS_TITLE_HOOK void Dq9BattleSlowMotionElapsed(uint32_t* r0, uint32_t* r4) {
+    if (Draw60()) *r0 = bus_read_u32(*r4 + kPassMs);
+}
+
 // Before `beq 0x02043E94` at 0x020439DC: r2 != 0 while the 2D message window
 // is up, r10 = the window manager, lr = the caller. True takes the branch past
 // the window's redraw. Never two passes in a row, so the window is at most one

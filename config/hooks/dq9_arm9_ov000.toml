@@ -13,6 +13,16 @@ mode = "arm"
 name = "Dq9BattleMultiplierSnapshot"
 registers = ["r0"]
 
+# 60 FPS mode, Accurate: the battle's slow motion (a reflected spell). At
+# 0x02160A0C the step 0x02160620 turns the scaled time of the pass back into
+# milliseconds; at 60 FPS and 5% speed that comes to 0 and the slow motion
+# never ends. Handler: src/hooks/frame_rate.cpp.
+[[hook]]
+address = 0x02160A10      # add r2, r7, #0x6E00 (r0 = ms counted, r4 = ctx)
+mode = "arm"
+name = "Dq9BattleSlowMotionElapsed"
+registers = ["r0", "r4"]
+
 # Battle targets on the top screen (handler src/hooks/battle_targets.cpp):
 # the target step 0x0217B380 (a command's state 14) takes the list widget's
 # entry as the target slot, then chooses it on a new A.
