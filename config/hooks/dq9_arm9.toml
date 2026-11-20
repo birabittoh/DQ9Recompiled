@@ -750,3 +750,33 @@ mode = "arm"
 name = "Dq9KeepGatheringSpots"
 on_true = "jump"
 jump_address = 0x0208EA70 # b 0x0208EBF4
+
+# Japanese release, the font. 0x02042954 loads the two fonts (s7, me) into
+# the boot heap (fi_<f>.bin index + fd_<f>.bin strip, pointers at
+# 0x0210782C / 0x02107834); the hook runs after the second load, before
+# `bl 0x0202F7F8`, and when the cartridge carries the Japanese fonts swaps in
+# copies with their glyphs added. Handler: src/hooks/ja_font.cpp.
+[[hook]]
+address = 0x02042988      # bl 0x0202F7F8 (both fonts loaded)
+mode = "arm"
+name = "Dq9JaFont"
+
+# The glyph searches, linear scans of the font's entries with memcmp
+# (0x02001AEC): 0x020424F4(str, font) -> index or -1, 0x0204255C(str,
+# font) -> entry or 0. Done natively in every mode (the bank then returns).
+# Handler: src/hooks/ja_font.cpp.
+[[hook]]
+address = 0x020424F4      # function entry, before push {r4-r6, lr}
+mode = "arm"
+name = "Dq9GlyphIndex"
+registers = ["r0", "r1"]
+on_true = "return"
+on_false = "continue"
+
+[[hook]]
+address = 0x0204255C      # function entry, before push
+mode = "arm"
+name = "Dq9GlyphEntry"
+registers = ["r0", "r1"]
+on_true = "return"
+on_false = "continue"
