@@ -241,7 +241,10 @@ bool BuildFont(int f, const GlyphSet& glyphs, Bytes* rom, Built* built) {
         out[e + 4] = uint8_t(list[i].width);
         out[e + 5] = list[i].len_flags;
         Put16(&out, e + 6, list[i].column);
+        // NUL-terminated as the game's: 0x020654C8 draws a cell by passing
+        // its sequence to the string drawer 0x0204F42C.
         out.insert(out.end(), list[i].seq.begin(), list[i].seq.end());
+        out.push_back(0);
     }
     Put32(&out, at_fi + 12, guest(at_kern));
     Put32(&out, at_fi + 16, guest(at_entries));
@@ -395,5 +398,20 @@ NDS_TITLE_HOOK bool Dq9GlyphEntry(uint32_t* r0, uint32_t* r1) {
     }
     const uint32_t index = bus_read_u32(kIndexTable + 4u * *r1);
     *r0 = bus_read_u32(index + 16u) + 8u * static_cast<uint32_t>(i);
+    return true;
+}
+
+// In the message window's layout pass (0x02067CE4, r0 = the glyph's cell or
+// -1, r10 = the manager): true (leave the pass, to resume there later) when
+// the glyph needs a new cell and 0x020459C8 has no cell (use count 0 at
+// mgr+0x17B8) or upload slot (clear bit at mgr+0x2CC) to give it.
+NDS_TITLE_HOOK bool Dq9GlyphCellWait(uint32_t* r0, uint32_t* r10) {
+    if (static_cast<int32_t>(*r0) >= 0) return false;
+    const uint32_t mgr = *r10;
+    bool slot = false;
+    for (uint32_t i = 0; i < 4 && !slot; ++i) slot = bus_read_u8(mgr + 0x2CCu + i) != 0xFFu;
+    if (!slot) return true;
+    for (uint32_t i = 0; i < 128; ++i)
+        if (bus_read_u8(mgr + 0x17B8u + i) == 0) return false;
     return true;
 }

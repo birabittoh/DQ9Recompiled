@@ -780,3 +780,26 @@ name = "Dq9GlyphEntry"
 registers = ["r0", "r1"]
 on_true = "return"
 on_false = "continue"
+
+# Message windows keep each distinct glyph in one of 128 cells (mgr+0x9B8,
+# 28 bytes each, use counts at mgr+0x17B8), staged through 32 upload slots
+# (bits at mgr+0x2CC, freed once per pass by 0x020439C0); a line's cells are
+# released when it scrolls away (0x0206B62C). The layout pass 0x02067B38,
+# called a few times a frame by 0x02067E68, lays the text out ahead of the
+# printing, one new cell per call:
+#   0x02067CE0  bl  0x02045C10          ; the cell showing this glyph, or -1
+#   0x02067CE4  cmp r0, #0              ; ... -1: 0x020459C8 makes one
+# With all cells taken 0x020459C8 gives cell 0, so every later glyph is drawn
+# as the message's first: Latin text never has 128 different glyphs in view
+# and ahead, a long Japanese message does. When a new cell is needed and no
+# cell or upload slot is free, the hook leaves through the epilogue with
+# nothing changed, and the pass resumes from that glyph on a later call,
+# once the lines above have scrolled away. Handler: src/hooks/ja_font.cpp.
+[[hook]]
+address = 0x02067CE4      # cmp r0, #0 (r0 = cell or -1, r10 = message manager)
+mode = "arm"
+name = "Dq9GlyphCellWait"
+registers = ["r0", "r10"]
+on_true = "jump"
+jump_address = 0x02067E58 # add sp, sp, #0xC ; pop {r4-r11, pc}
+on_false = "continue"
