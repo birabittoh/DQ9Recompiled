@@ -1,6 +1,8 @@
 package com.birabittoh.dq9recompiled;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -104,6 +106,61 @@ public class DQ9RecompiledActivity extends SDLActivity {
             }
         });
         return true;
+    }
+
+    /**
+     * SDL's message box lays its own centred text and button row into the
+     * dialog with no padding. A plain AlertDialog instead, with the system's
+     * spacing and the game's icon: the Enter button is the positive one, the Escape button the
+     * negative one, any other the neutral one. More than three buttons, or
+     * two of a kind, are left to SDL.
+     */
+    @Override
+    protected void messageboxCreateAndShow(Bundle args) {
+        final int[] flags = args.getIntArray("buttonFlags");
+        final int[] ids = args.getIntArray("buttonIds");
+        final String[] texts = args.getStringArray("buttonTexts");
+        final int[] which = new int[texts.length];
+        boolean positive = false, negative = false, neutral = false;
+        for (int i = 0; i < texts.length; ++i) {
+            if ((flags[i] & 0x1) != 0 && !positive) {  // RETURNKEY_DEFAULT
+                which[i] = DialogInterface.BUTTON_POSITIVE;
+                positive = true;
+            } else if ((flags[i] & 0x2) != 0 && !negative) {  // ESCAPEKEY_DEFAULT
+                which[i] = DialogInterface.BUTTON_NEGATIVE;
+                negative = true;
+            } else if (!neutral) {
+                which[i] = DialogInterface.BUTTON_NEUTRAL;
+                neutral = true;
+            } else {
+                super.messageboxCreateAndShow(args);
+                return;
+            }
+        }
+        final AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle(args.getString("title"))
+            .setIcon(getApplicationInfo().icon)  // the ROM banner's icon
+            .setMessage(args.getString("message"))
+            .setCancelable(false)
+            .create();
+        for (int i = 0; i < texts.length; ++i) {
+            final int id = ids[i];
+            dialog.setButton(which[i], texts[i], new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface d, int w) {
+                    messageboxSelection[0] = id;
+                }
+            });
+        }
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface unused) {
+                synchronized (messageboxSelection) {
+                    messageboxSelection.notify();
+                }
+            }
+        });
+        dialog.show();
     }
 
     @Override

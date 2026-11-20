@@ -1,6 +1,8 @@
 [game]
 # Data directory name: settings, saves and savestates live there.
 app_name = "DQ9Recompiled"
+# Shown before the ROM's own title can be read (the first-launch prompt).
+name = "Dragon Quest IX"
 id = "YDQP"
 region = "Europe"
 revision = 0

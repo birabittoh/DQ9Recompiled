@@ -34,6 +34,10 @@ MINIMUM_SYSTEM_VERSION = "13.0"
 # top-level entry of the image next to the installed .app, which is usually
 # /Applications.
 FILES_IN_RESOURCES = ["LICENSE", "LICENSE-GPL", "README.md"]
+# The unpacked ROM build.py configures from (its NDS_EXE_ICON_ROM), whose
+# banner icon becomes the app's.
+ROM_DIR = os.path.join("assets", "YDQP")
+ICON_FILE = "AppIcon.icns"
 
 
 def run(cmd, **kwargs):
@@ -78,7 +82,22 @@ def bundle_libraries(exe, frameworks_dir):
         run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks", exe])
 
 
-def write_info_plist(contents_dir, version):
+def write_icon(resources_dir):
+    """The cartridge banner icon as Resources/<ICON_FILE>, for Finder, the
+    Dock and the system dialogs (the running game's window icon only reaches
+    the Dock once its window is open). False without the unpacked ROM."""
+    rom = os.path.join(ROOT, ROM_DIR)
+    if not os.path.isfile(os.path.join(rom, "rom.toml")):
+        print(f"warning: {ROM_DIR} not found, the app gets no icon",
+              file=sys.stderr)
+        return False
+    run([sys.executable, "-I",
+         os.path.join(ROOT, "ndsrecomp", "tools", "gen_nds_icon.py"),
+         "--icns", rom, os.path.join(resources_dir, ICON_FILE)])
+    return True
+
+
+def write_info_plist(contents_dir, version, has_icon):
     info = {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleDisplayName": DISPLAY_NAME,
@@ -95,6 +114,8 @@ def write_info_plist(contents_dir, version):
         # Retina is visibly soft.
         "NSHighResolutionCapable": True,
     }
+    if has_icon:
+        info["CFBundleIconFile"] = ICON_FILE
     path = os.path.join(contents_dir, "Info.plist")
     print(f"+ write {path}")
     with open(path, "wb") as fh:
@@ -126,8 +147,9 @@ def build_app(app_path, version):
 
     for name in FILES_IN_RESOURCES:
         shutil.copy2(os.path.join(ROOT, name), resources)
+    has_icon = write_icon(resources)
     bundle_libraries(exe, os.path.join(contents, "Frameworks"))
-    write_info_plist(contents, version)
+    write_info_plist(contents, version, has_icon)
 
     # --deep is deprecated for real identities but right for an ad-hoc pass
     # over relinked dylibs. Fatal on failure: on arm64 the result would not
