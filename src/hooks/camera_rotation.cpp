@@ -4,8 +4,8 @@
 // Off leaves the game untouched; L+R still resets the camera. See
 // config/hooks/dq9_arm9.toml for the guest code.
 //
-// Extra buttons (Controls > Extra buttons, [title] camera_buttons, off by
-// default): on-screen buttons (ndsrecomp runner/src/touch_buttons.h) for
+// Extra buttons (Controls > Extra buttons opacity, [title] camera_buttons,
+// off by default; else their opacity, 25% to 100%): on-screen buttons (ndsrecomp runner/src/touch_buttons.h) for
 // play without a pad. Two hold L and R to turn the camera, halfway down the
 // left and right edges of the top screen, and one holds B to emote, at the
 // bottom center (a latch: B stays down, and a tap on an emote on the
@@ -42,13 +42,20 @@ constexpr NdsTitleSetting kUnlockRotation = {
 
 const int kUnlockRotationId = nds_title_setting_register(&kUnlockRotation);
 
+constexpr const char* kOpacityChoices[] = {"Off", "25%", "50%", "75%",
+                                           "100%"};
+constexpr int kOpacityValues[] = {0, 25, 50, 75, 100};
+static_assert(sizeof(kOpacityChoices) / sizeof(kOpacityChoices[0]) ==
+                  sizeof(kOpacityValues) / sizeof(kOpacityValues[0]),
+              "choices");
+
 constexpr NdsTitleSetting kCameraButtons = {
     "camera_buttons",
-    "Extra buttons",
-    "Shows on-screen buttons that turn the field camera, emote and fast "
-    "forward, for play without a pad.",
-    0, 1, 1,
-    kChoices, sizeof(kChoices) / sizeof(kChoices[0]), nullptr,
+    "Extra buttons opacity",
+    "On-screen buttons for play without a pad. Off hides them.",
+    0, 100, 25,
+    kOpacityChoices, sizeof(kOpacityChoices) / sizeof(kOpacityChoices[0]),
+    kOpacityValues,
     0,
 };
 
@@ -343,14 +350,24 @@ bool FastForwardShown() {
     return nds_title_setting_value(kCameraButtonsId) != 0;
 }
 
-const bool kButtonsRegistered =
-    (nds_touch_button_register(&kTurnLeft),
-     nds_touch_button_register(&kTurnRight),
-     nds_touch_button_register(&kEmote),
-     nds_touch_button_register(&kLand),
-     nds_touch_button_set_query(nds_touch_button_fast_forward(),
-                                FastForwardShown),
-     true);
+int ButtonsOpacity() { return nds_title_setting_value(kCameraButtonsId); }
+
+bool RegisterButtons() {
+    const int ids[] = {
+        nds_touch_button_register(&kTurnLeft),
+        nds_touch_button_register(&kTurnRight),
+        nds_touch_button_register(&kEmote),
+        nds_touch_button_register(&kLand),
+        nds_touch_button_fast_forward(),
+    };
+    nds_touch_button_set_query(nds_touch_button_fast_forward(),
+                               FastForwardShown);
+    for (const int id : ids)
+        nds_touch_button_set_opacity_query(id, ButtonsOpacity);
+    return true;
+}
+
+const bool kButtonsRegistered = RegisterButtons();
 
 }  // namespace
 
