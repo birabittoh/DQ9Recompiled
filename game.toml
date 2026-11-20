@@ -69,17 +69,16 @@ language = "english"
 # its right button DS A. "labels" matches the names instead (pad A is DS A).
 gamepad_layout = "positional"
 
-# Online DLC. The runner's virtual access point is open (no WEP/WPA) and its
-# DHCP hands the game this DNS server: the community DQ9 DLC server, the same
-# address players enter by hand as "Primary DNS" on real hardware. Configure
-# the connection in DQ9's own Wi-Fi settings and it works with no manual DNS.
+# Online DLC without the internet: the runner answers Nintendo's servers
+# itself (ndsrecomp net/wfc_local_server.h) and src/hooks/wfc_downloads.cpp
+# hands Sellma the downloadable quests and today's DQVC stock. Configure the
+# connection in DQ9's own Wi-Fi settings (the access point is open).
 [network]
 enabled = true
 
 [network.wfc]
 enabled = true
-provider = "dq9-dlc"   # label only; dns_server wins
-dns_server = "172.104.88.237"
+provider = "built-in"
 
 # Discord Rich Presence: "<hero>, Lv. <level> <vocation>" and "Exploring
 # <place>" (or "Fighting in <place>") on the player's Discord profile, while
