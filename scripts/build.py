@@ -6,11 +6,13 @@ ndsrecomp's runner in build-runner/) with the per-platform flags each needs,
 then copies the runner to the repo root as DQ9Recompiled[.exe].
 """
 import argparse
+import hashlib
 import os
 import platform
 import shutil
 import subprocess
 import sys
+import zlib
 
 from recomplauncher import stage_manifest
 
@@ -29,9 +31,13 @@ RECOMP_NET_DIR = "recomp-net"
 # build fills them in from ROM_DIR and checks the recipe against the banks,
 # so only the Europe ROM is needed. With assets/<id>, the release unpacked
 # next to ROM_DIR, the recipe in git is made again first.
-RECIPE_RELEASES = ("YDQE",)
+# YDQJ's recipe applies to the Japanese ROM after its data plan
+# (scripts/ja-convert.py, recipes/YDQJ.data, filled in like the recipes)
+# has put its files in YDQP's layout with Japanese text.
+RECIPE_RELEASES = ("YDQE", "YDQJ")
 RECIPE_SOURCE_DIR = "recipes"
 RECIPE_DIR = os.path.join("generated", "recipes")
+JA_PLAN = os.path.join(RECIPE_DIR, "YDQJ.data")
 RECIPE_OPTIONS = [
     "--prefix", "dq9",
     # Overlay 29's banks are built from its decrypted image
@@ -229,12 +235,96 @@ def build_banks(args, compilers, python):
          "--target", "dq9_romcheck", "dq9_generate_banks"])
 
 
+def file_digest(paths):
+    h = hashlib.sha1()
+    for path in paths:
+        with open(path, "rb") as f:
+            h.update(f.read())
+    return h.hexdigest()
+
+
+def make_ja_folder(python):
+    """The Japanese release's data plan (scripts/ja-convert.py): made again
+    from assets/YDQJ when that is unpacked and the plan's inputs changed,
+    then filled in from ROM_DIR into JA_PLAN. Returns the folder
+    YDQJ.recipe is made from (the plan applied to assets/YDQJ: YDQP's
+    layout, YDQJ's code), or None when assets/YDQJ is not there."""
+    tool = os.path.join("scripts", "ja-convert.py")
+    source = os.path.join(RECIPE_SOURCE_DIR, "YDQJ.data")
+    jp = os.path.join("assets", "YDQJ")
+    work = os.path.join("generated", "ja")
+    folder = os.path.join(work, "YDQJ")
+    if os.path.exists(JA_PLAN):
+        os.remove(JA_PLAN)
+    if not os.path.exists(os.path.join(jp, "rom.toml")):
+        if not os.path.exists(source):
+            print(f"note: neither {jp}/ nor {source} found; the build will "
+                  "not run the YDQJ release", flush=True)
+            return None
+        run([python, "-I", tool, "fill", source, "--pal", ROM_DIR, JA_PLAN])
+        return None
+    os.makedirs(work, exist_ok=True)
+    inputs = [os.path.join("scripts", n) for n in (
+        "ja-convert.py", "ja_text.py", "ja-map.py", "ja-files.toml",
+        "l5_archive.py", "dq9_text_table.py")] + [
+        os.path.join(jp, "rom.toml"), os.path.join(ROM_DIR, "rom.toml")]
+    stamp = os.path.join(work, "plan.stamp")
+    digest = file_digest(inputs)
+    current = os.path.exists(stamp) and open(stamp).read() == digest
+    if not (current and os.path.exists(source)
+            and os.path.exists(os.path.join(folder, "rom.toml"))):
+        if os.path.exists(stamp):
+            os.remove(stamp)
+        run([python, "-I", tool, "plan", "--pal", ROM_DIR, "--jp", jp,
+             "--cache", work, source])
+        run([python, "-I", tool, "fill", source, "--pal", ROM_DIR, JA_PLAN])
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
+        run([python, "-I", tool, "apply", JA_PLAN, "--jp", jp, folder])
+        with open(stamp, "w") as f:
+            f.write(digest)
+    else:
+        run([python, "-I", tool, "fill", source, "--pal", ROM_DIR, JA_PLAN])
+    return folder
+
+
+def write_ja_plan_inc():
+    """src/hooks/ja_plan.generated.inc: the filled Japanese data plan,
+    deflated, for src/hooks/ja_convert.cpp (empty without one). Rewritten
+    only when it changes."""
+    out = os.path.join("src", "hooks", "ja_plan.generated.inc")
+    lines = ["// scripts/build.py: the filled scripts/ja-convert.py plan, deflated.\n"]
+    size = 0
+    if os.path.exists(JA_PLAN):
+        with open(JA_PLAN, "rb") as f:
+            raw = f.read()
+        size = len(raw)
+        packed = zlib.compress(raw, 9)
+        lines.append(f"#define DQ9_JA_PLAN_SIZE {size}u\n")
+        lines.append("static const unsigned char kJaPlan[] = {\n")
+        for i in range(0, len(packed), 32):
+            lines.append(",".join(str(b) for b in packed[i:i + 32]) + ",\n")
+        lines.append("};\n")
+    else:
+        lines.append("#define DQ9_JA_PLAN_SIZE 0u\n")
+        lines.append("static const unsigned char kJaPlan[] = {0};\n")
+    text = "".join(lines)
+    if os.path.exists(out):
+        with open(out, encoding="utf8") as f:
+            if f.read() == text:
+                return
+    with open(out, "w", encoding="utf8", newline="\n") as f:
+        f.write(text)
+    print(f"{out}: {size} bytes of plan", flush=True)
+
+
 def make_recipes(python):
     """Fill in each RECIPE_RELEASES recipe for the build, making it again
     first when its release is unpacked."""
     tool = os.path.join("ndsrecomp", "tools", "release_recipe.py")
     recomp = os.path.join("generated", "recomp")
     os.makedirs(RECIPE_DIR, exist_ok=True)
+    ja_folder = make_ja_folder(python)
     for release in RECIPE_RELEASES:
         source = os.path.join(RECIPE_SOURCE_DIR, f"{release}.recipe")
         out = os.path.join(RECIPE_DIR, f"{release}.recipe")
@@ -242,8 +332,10 @@ def make_recipes(python):
         for stale in (out, made):
             if os.path.exists(stale):
                 os.remove(stale)
-        folder = os.path.join("assets", release)
-        if os.path.exists(os.path.join(folder, "rom.toml")):
+        # YDQJ's recipe applies to its data plan's output, not to the ROM
+        # as it is unpacked.
+        folder = ja_folder if release == "YDQJ" else os.path.join("assets", release)
+        if folder and os.path.exists(os.path.join(folder, "rom.toml")):
             run([python, "-I", tool, "make", ROM_DIR, folder, recomp, made]
                 + RECIPE_OPTIONS)
             run([python, "-I", tool, "blank", made, source])
@@ -493,6 +585,7 @@ def main():
     elif not os.path.isdir(os.path.join("generated", "recomp")):
         die("generated/recomp missing: run without --runner-only first")
 
+    write_ja_plan_inc()
     build_runner(args, compilers)
 
 

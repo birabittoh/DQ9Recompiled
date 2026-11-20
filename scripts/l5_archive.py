@@ -187,3 +187,21 @@ def read_archive(data):
     if is_named_table_pac(data):
         return read_named_table_pac(data)
     return None
+
+
+def read_gpc2_stored(data):
+    """The entries of a GPC2 as stored ({name: bytes}): each a compressed
+    block with its header, or the raw bytes in a raw-entry archive."""
+    if not is_gpc2(data):
+        raise ValueError("not a GPC2 archive")
+    table, pos = decompress(data, 0x14)
+    names, pos = decompress(data, (pos + 3) & ~3)
+    base = (pos + 3) & ~3
+    out = {}
+    for i in range(len(table) // 12):
+        _, w2, w3 = struct.unpack_from("<III", table, 12 * i)
+        name_off = (w3 >> 24) << 8 | (w2 >> 24)
+        name = names[name_off:names.index(b"\0", name_off)].decode("ascii")
+        at = base + 4 * (w2 & 0xFFFFFF)
+        out[name] = bytes(data[at:at + (w3 & 0xFFFFFF)])
+    return out
