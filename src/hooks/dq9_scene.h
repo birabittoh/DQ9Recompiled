@@ -214,17 +214,24 @@ inline bool CharacterPage() {
 //     part of it) and sets BG1CNT 0x0F01 (BG0 0x0000, BG2 0x0E0A, BG3
 //     0x0003) for as long as it is up. The field has 0x0004 there, its 2D
 //     message box 0x0D09 and the camp menu 0x1D02.
+//   * The guestbook keeps BG1CNT and BG2CNT at the 2D message box's 0x0D09
+//     / 0x0E0A, but also turns on BG3 with 0x0F03 (BG0 0x0000, BLDCNT
+//     0x0844), and fades in and out with 0x0D08 / 0x0E09 / 0x0F02 (BG0
+//     0x0003). The message box has BG3CNT 0x0000 and the field 0x0003.
 inline bool InnPage() {
     constexpr uint32_t kFieldSlot = 0;
     constexpr int kKrakPotOverlay = 6;
     constexpr uint32_t kBg0cntA = 0x04000008;
     constexpr uint32_t kBg1cntA = 0x0400000A;
+    constexpr uint32_t kBg3cntA = 0x0400000E;
     constexpr uint16_t kKrakPotBg1 = 0x1D00;
     constexpr uint16_t kCanvassBg1 = 0x0F01;
     const uint16_t bg1 = bus_read_u16(kBg1cntA);
     if (bg1 == kKrakPotBg1)
         return LoadedOverlay(kFieldSlot) == kKrakPotOverlay;
-    return bg1 == kCanvassBg1 && bus_read_u16(kBg0cntA) == 0;
+    if (bg1 == kCanvassBg1) return bus_read_u16(kBg0cntA) == 0;
+    const uint16_t bg3 = bus_read_u16(kBg3cntA);
+    return (bg1 == 0x0D09 && bg3 == 0x0F03) || (bg1 == 0x0D08 && bg3 == 0x0F02);
 }
 
 // The treasure map (camp menu > Items > a treasure map), where the treasure
