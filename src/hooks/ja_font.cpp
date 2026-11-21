@@ -26,6 +26,15 @@
 // is a glyph of the kerning table would pick up a Latin pair's adjustment.
 // Those indices get filler entries ("\xFF\xFF", which no text holds).
 //
+// Names (the hero's, the companions') are kept as one byte per glyph index
+// (0x020426CC text -> indices, 0x02042774 back; 0 ends, 0xFF is a space),
+// through font 0 on the name keyboard and font 1 elsewhere. So both copies
+// share their first 256 glyphs: the Latin ones a name may hold
+// (kKeepLatin, at the index font 1 gives them, as saved names have them),
+// then the kana of the Japanese name keyboard (kNameKana) in the free
+// slots. The other Latin glyphs move past them, and the kerning pairs that
+// name one of those are dropped.
+//
 // The glyph searches (0x020424F4 index, 0x0204255C entry) are linear scans
 // with memcmp; with some 1800 glyphs they are done natively here
 // (Dq9GlyphIndex, Dq9GlyphEntry), with the same result for every font.
@@ -54,6 +63,67 @@ constexpr uint32_t kRomBase = 0x09000000u;
 constexpr int kRows = 12;
 constexpr char kFontFile[] = "data/pack/font.gp2";
 constexpr char kTrailer[8] = {'D', 'Q', '9', 'J', 'F', 'O', 'N', 'T'};
+
+// Latin glyphs that keep their index below 256: font 1's first 70 (space,
+// the arrows, digits and letters), the kerned ones and common punctuation.
+constexpr const char* kKeepLatin[] = {
+    "< >", "//", "/", ",", "'", "<capslock>", "<shift>", "<back>",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+    "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+    "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+    ".", "<,>", "<`A>", "<'A>", "<^A>", "<:A>", "<AE>",
+    "*", "!", "?", "-", "<->", ":", "&", "(", ")", "+", "=",
+};
+
+// The Shift JIS codes the Japanese name keyboard types (hiragana, their
+// voiced forms, katakana, theirs, and the symbols), which a name byte must
+// hold.
+constexpr uint16_t kNameKana[] = {
+    0x82A0, 0x82A2, 0x82A4, 0x82A6, 0x82A8, 0x82A9, 0x82AB, 0x82AD, 0x82AF,
+    0x82B1, 0x82B3, 0x82B5, 0x82B7, 0x82B9, 0x82BB, 0x82BD, 0x82BF, 0x82C2,
+    0x82C4, 0x82C6, 0x82C8, 0x82C9, 0x82CA, 0x82CB, 0x82CC, 0x82CD, 0x82D0,
+    0x82D3, 0x82D6, 0x82D9, 0x82DC, 0x82DD, 0x82DE, 0x82DF, 0x82E0, 0x82E2,
+    0x82E4, 0x82E6, 0x82E7, 0x82E8, 0x82E9, 0x82EA, 0x82EB, 0x82ED, 0x82F0,
+    0x82F1, 0x829F, 0x82A1, 0x82A3, 0x82A5, 0x82A7, 0x82E1, 0x82E3, 0x82E5,
+    0x82C1, 0x82AA, 0x82AC, 0x82AE, 0x82B0, 0x82B2, 0x82B4, 0x82B6, 0x82B8,
+    0x82BA, 0x82BC, 0x82BE, 0x82C0, 0x82C3, 0x82C5, 0x82C7, 0x82CE, 0x82CF,
+    0x82D1, 0x82D2, 0x82D4, 0x82D5, 0x82D7, 0x82D8, 0x82DA, 0x82DB, 0x8341,
+    0x8343, 0x8345, 0x8347, 0x8349, 0x834A, 0x834C, 0x834E, 0x8350, 0x8352,
+    0x8354, 0x8356, 0x8358, 0x835A, 0x835C, 0x835E, 0x8360, 0x8363, 0x8365,
+    0x8367, 0x8369, 0x836A, 0x836B, 0x836C, 0x836D, 0x836E, 0x8371, 0x8374,
+    0x8377, 0x837A, 0x837D, 0x837E, 0x8380, 0x8381, 0x8382, 0x8384, 0x8386,
+    0x8388, 0x8389, 0x838A, 0x838B, 0x838C, 0x838D, 0x838F, 0x8392, 0x8393,
+    0x8340, 0x8342, 0x8344, 0x8346, 0x8348, 0x8383, 0x8385, 0x8387, 0x8362,
+    0x8394, 0x834B, 0x834D, 0x834F, 0x8351, 0x8353, 0x8355, 0x8357, 0x8359,
+    0x835B, 0x835D, 0x835F, 0x8361, 0x8364, 0x8366, 0x8368, 0x836F, 0x8370,
+    0x8372, 0x8373, 0x8375, 0x8376, 0x8378, 0x8379, 0x837B, 0x837C, 0x815B,
+    0x8144, 0x8163, 0x8148, 0x8149,
+};
+
+// Voicing on the name keyboard: base kana, mark (1 = dakuten 0x814A,
+// 2 = handakuten 0x814B), the voiced kana.
+struct Voicing {
+    uint16_t base;
+    uint8_t mark;
+    uint16_t voiced;
+};
+constexpr Voicing kVoicing[] = {
+    {0x82A9, 1, 0x82AA}, {0x82AB, 1, 0x82AC}, {0x82AD, 1, 0x82AE}, {0x82AF, 1, 0x82B0},
+    {0x82B1, 1, 0x82B2}, {0x82B3, 1, 0x82B4}, {0x82B5, 1, 0x82B6}, {0x82B7, 1, 0x82B8},
+    {0x82B9, 1, 0x82BA}, {0x82BB, 1, 0x82BC}, {0x82BD, 1, 0x82BE}, {0x82BF, 1, 0x82C0},
+    {0x82C2, 1, 0x82C3}, {0x82C4, 1, 0x82C5}, {0x82C6, 1, 0x82C7}, {0x82CD, 1, 0x82CE},
+    {0x82CD, 2, 0x82CF}, {0x82D0, 1, 0x82D1}, {0x82D0, 2, 0x82D2}, {0x82D3, 1, 0x82D4},
+    {0x82D3, 2, 0x82D5}, {0x82D6, 1, 0x82D7}, {0x82D6, 2, 0x82D8}, {0x82D9, 1, 0x82DA},
+    {0x82D9, 2, 0x82DB}, {0x8345, 1, 0x8394}, {0x834A, 1, 0x834B}, {0x834C, 1, 0x834D},
+    {0x834E, 1, 0x834F}, {0x8350, 1, 0x8351}, {0x8352, 1, 0x8353}, {0x8354, 1, 0x8355},
+    {0x8356, 1, 0x8357}, {0x8358, 1, 0x8359}, {0x835A, 1, 0x835B}, {0x835C, 1, 0x835D},
+    {0x835E, 1, 0x835F}, {0x8360, 1, 0x8361}, {0x8363, 1, 0x8364}, {0x8365, 1, 0x8366},
+    {0x8367, 1, 0x8368}, {0x836E, 1, 0x836F}, {0x836E, 2, 0x8370}, {0x8371, 1, 0x8372},
+    {0x8371, 2, 0x8373}, {0x8374, 1, 0x8375}, {0x8374, 2, 0x8376}, {0x8377, 1, 0x8378},
+    {0x8377, 2, 0x8379}, {0x837A, 1, 0x837B}, {0x837A, 2, 0x837C},
+};
 
 // A Japanese glyph: rows of `width` pixels, bit c of row r = pixel
 // (first + c, r) of the source.
@@ -171,35 +241,32 @@ size_t Align(Bytes* b, size_t n) {
     return b->size();
 }
 
-// Appends to `rom` font `f` as the game loaded it plus `glyphs`, and
-// records it in `built`. False (rom unchanged) if it does not fit.
-bool BuildFont(int f, const GlyphSet& glyphs, Bytes* rom, Built* built) {
+// What each of the first 256 glyph indices holds in both fonts.
+struct Slot {
+    int kind = 0;  // 0 nothing (a filler), 1 a Latin glyph, 2 a kana
+    Bytes seq;     // kind 1
+    uint16_t code = 0;  // kind 2
+};
+using Layout = std::array<Slot, 256>;
+
+// A glyph entry as built.
+struct Entry {
+    Bytes seq;
+    int8_t width;
+    uint8_t len_flags;
+    uint32_t column;
+};
+
+Entry Filler() { return {{0xFF, 0xFF}, 0, 2, 0}; }
+
+// The glyph entries of font `f` as the game loaded it.
+std::vector<Entry> GameEntries(int f) {
+    std::vector<Entry> out;
     const uint32_t fi = bus_read_u32(kIndexTable + 4u * f);
-    const uint32_t fd = bus_read_u32(kBitmapTable + 4u * f);
-    if (!fi || !fd) return false;
+    if (!fi) return out;
     const uint32_t count = bus_read_u32(fi + 4u);
-    const uint32_t kerns = bus_read_u32(fi + 8u);
-    const uint32_t kern_table = bus_read_u32(fi + 12u);
     const uint32_t entries = bus_read_u32(fi + 16u);
-    const uint32_t width = bus_read_u16(fd + 4u);
-    const uint32_t height = bus_read_u16(fd + 6u);
-    const uint32_t bitmap = bus_read_u32(fd + 12u);
-    if (height != kRows || (width & 7u) || count > 0x1000u || kerns > 0x1000u) return false;
-
-    bool kerned[256] = {};
-    for (uint32_t i = 0; i < kerns; ++i) {
-        kerned[bus_read_u8(kern_table + 4u * i)] = true;
-        kerned[bus_read_u8(kern_table + 4u * i + 1u)] = true;
-    }
-
-    // Glyph entries: the game's, then the Japanese ones (fillers between).
-    struct Entry {
-        Bytes seq;
-        int8_t width;
-        uint8_t len_flags;
-        uint32_t column;
-    };
-    std::vector<Entry> list;
+    if (count > 0x1000u) return out;
     for (uint32_t i = 0; i < count; ++i) {
         const uint32_t e = entries + 8u * i;
         Entry x;
@@ -208,16 +275,118 @@ bool BuildFont(int f, const GlyphSet& glyphs, Bytes* rom, Built* built) {
         x.len_flags = bus_read_u8(e + 5u);
         x.column = bus_read_u16(e + 6u);
         for (uint32_t k = 0; k < (x.len_flags & 0x3Fu); ++k) x.seq.push_back(bus_read_u8(seq + k));
-        list.push_back(std::move(x));
+        out.push_back(std::move(x));
     }
+    return out;
+}
+
+// The shared first 256 glyphs: kKeepLatin where font 1 has them, kNameKana
+// in the slots left (not 0, the end of a name, nor 0xFF, a space).
+bool MakeLayout(const GlyphSet& kana, Layout* out) {
+    const std::vector<Entry> me = GameEntries(1);
+    for (const char* s : kKeepLatin) {
+        const Bytes seq(s, s + std::strlen(s));
+        for (size_t i = 0; i < me.size() && i < 256; ++i) {
+            if (me[i].seq != seq) continue;
+            (*out)[i].kind = 1;
+            (*out)[i].seq = seq;
+            break;
+        }
+    }
+    size_t next = 0;
+    for (int s = 1; s < 255 && next < std::size(kNameKana); ++s) {
+        if ((*out)[s].kind) continue;
+        while (next < std::size(kNameKana) && !kana.count(kNameKana[next])) ++next;
+        if (next == std::size(kNameKana)) break;
+        (*out)[s].kind = 2;
+        (*out)[s].code = kNameKana[next++];
+    }
+    if (next < std::size(kNameKana)) {
+        std::fprintf(stderr, "[ja-font] no room for %zu name kana\n", std::size(kNameKana) - next);
+        return false;
+    }
+    return true;
+}
+
+// Appends to `rom` font `f` as the game loaded it plus `glyphs`, its first
+// 256 glyphs as `layout` says, and records it in `built`. False (rom
+// unchanged) if it does not fit.
+bool BuildFont(int f, const GlyphSet& glyphs, const Layout& layout, Bytes* rom, Built* built) {
+    const uint32_t fi = bus_read_u32(kIndexTable + 4u * f);
+    const uint32_t fd = bus_read_u32(kBitmapTable + 4u * f);
+    if (!fi || !fd) return false;
+    const uint32_t count = bus_read_u32(fi + 4u);
+    const uint32_t kerns = bus_read_u32(fi + 8u);
+    const uint32_t kern_table = bus_read_u32(fi + 12u);
+    const uint32_t width = bus_read_u16(fd + 4u);
+    const uint32_t height = bus_read_u16(fd + 6u);
+    const uint32_t bitmap = bus_read_u32(fd + 12u);
+    if (height != kRows || (width & 7u) || count > 0x1000u || kerns > 0x1000u) return false;
+    const std::vector<Entry> game = GameEntries(f);
+
+    // The game's glyphs keep their columns of the strip; the Japanese ones
+    // are added after it.
     uint32_t column = width;
     std::vector<std::pair<uint32_t, const Glyph*>> placed;
-    for (const auto& [code, g] : glyphs) {
-        while (kerned[list.size() & 0xFFu])
-            list.push_back({{0xFF, 0xFF}, 0, 2, 0});
-        list.push_back({{uint8_t(code >> 8), uint8_t(code)}, int8_t(g.width), 2, column});
+    const auto japanese = [&](uint16_t code, const Glyph& g) {
         placed.emplace_back(column, &g);
+        Entry e{{uint8_t(code >> 8), uint8_t(code)}, int8_t(g.width), 2, column};
         column += g.width;
+        return e;
+    };
+
+    // The first 256.
+    std::vector<Entry> list(256, Filler());
+    std::vector<int> moved(game.size(), -1);  // game index -> new index
+    std::vector<bool> taken(game.size());
+    std::vector<bool> done(65536);
+    for (int s = 0; s < 256; ++s) {
+        const Slot& slot = layout[s];
+        if (slot.kind == 1) {
+            for (size_t i = 0; i < game.size(); ++i) {
+                if (taken[i] || game[i].seq != slot.seq) continue;
+                taken[i] = true;
+                moved[i] = s;
+                list[s] = game[i];
+                break;
+            }
+        } else if (slot.kind == 2) {
+            const auto it = glyphs.find(slot.code);
+            if (it == glyphs.end()) continue;
+            list[s] = japanese(slot.code, it->second);
+            done[slot.code] = true;
+        }
+    }
+
+    // The kerning pairs between glyphs still below 256 (the kerning search
+    // takes indices & 0xFF).
+    Bytes kern;
+    bool kerned[256] = {};
+    for (uint32_t i = 0; i < kerns; ++i) {
+        const uint32_t k = kern_table + 4u * i;
+        const uint8_t a = bus_read_u8(k), b = bus_read_u8(k + 1u);
+        if (a >= game.size() || b >= game.size() || moved[a] < 0 || moved[b] < 0) continue;
+        kern.push_back(uint8_t(moved[a]));
+        kern.push_back(uint8_t(moved[b]));
+        kern.push_back(bus_read_u8(k + 2u));
+        kern.push_back(bus_read_u8(k + 3u));
+        kerned[moved[a]] = kerned[moved[b]] = true;
+    }
+
+    // The rest: the game's other glyphs, then the Japanese ones. An index
+    // whose low byte is a kerned glyph's gets a filler instead.
+    const auto room = [&] {
+        while (kerned[list.size() & 0xFFu]) list.push_back(Filler());
+    };
+    for (size_t i = 0; i < game.size(); ++i) {
+        if (taken[i]) continue;
+        room();
+        list.push_back(game[i]);
+    }
+    for (const auto& [code, g] : glyphs) {
+        if (done[code]) continue;
+        room();
+        list.push_back(japanese(code, g));
     }
     const uint32_t new_width = (column + 7u) & ~7u;
     if (new_width > 0xFFFFu || list.size() > 0xFFFFu) return false;
@@ -229,9 +398,9 @@ bool BuildFont(int f, const GlyphSet& glyphs, Bytes* rom, Built* built) {
     out.resize(at_fi + 24);
     for (int i = 0; i < 4; ++i) out[at_fi + i] = bus_read_u8(fi + i);
     Put32(&out, at_fi + 4, uint32_t(list.size()));
-    Put32(&out, at_fi + 8, kerns);
+    Put32(&out, at_fi + 8, uint32_t(kern.size() / 4));
     const size_t at_kern = out.size();
-    for (uint32_t i = 0; i < kerns * 4; ++i) out.push_back(bus_read_u8(kern_table + i));
+    out.insert(out.end(), kern.begin(), kern.end());
     const size_t at_entries = Align(&out, 4);
     out.resize(at_entries + 8 * list.size());
     const size_t at_pool = out.size();
@@ -359,11 +528,14 @@ NDS_TITLE_HOOK void Dq9JaFont() {
     for (const auto& [code, g] : f10) narrow[code] = g;
     narrow[0x8140].width = 9;
 
-    Bytes rom;
+    Layout layout;
+    if (!MakeLayout(f12, &layout)) return;
+    // The name keyboard's first key (Dq9NameKeyboardFind).
+    Bytes rom = {0x82, 0xA0, 0};
     const GlyphSet* sets[kFonts] = {&narrow, &f12};
     Built built[kFonts];
     for (int f = 0; f < kFonts; ++f) {
-        if (!BuildFont(f, *sets[f], &rom, &built[f])) {
+        if (!BuildFont(f, *sets[f], layout, &rom, &built[f])) {
             std::fprintf(stderr, "[ja-font] font %d: cannot add the glyphs\n", f);
             return;
         }
@@ -413,5 +585,77 @@ NDS_TITLE_HOOK bool Dq9GlyphCellWait(uint32_t* r0, uint32_t* r10) {
     if (!slot) return true;
     for (uint32_t i = 0; i < 128; ++i)
         if (bus_read_u8(mgr + 0x17B8u + i) == 0) return false;
+    return true;
+}
+
+// The name keyboard (overlay 3; layouts data/bin/keyboard_cm.bin and
+// keyboard_cs.bin, which the Japanese release's conversion replaces with
+// its kana grid). Keyboard: +0 the key under the cursor, +4 the key list
+// (+0 keys, 20 bytes each: +4 the string typed, +8 the shifted one, +15
+// "not a character"; +6 s16 count), +8 the name typed (text), +30 the page,
+// +32 shift.
+//
+// At the entry of 0x0215F41C(keyboard, str) (reset, cursor on the first key
+// whose string starts with `str`) and 0x0215F4FC(keyboard, str) (the key
+// whose string starts with `str`): the game asks for "1", the Europe
+// layouts' first key. A layout with no such key gets its "あ" instead.
+NDS_TITLE_HOOK void Dq9NameKeyboardFind(uint32_t* r0, uint32_t* r1) {
+    if (!g_built[0].index || !*r0 || !*r1) return;
+    if (bus_read_u8(*r1) != '1' || bus_read_u8(*r1 + 1u) != 0) return;
+    const uint32_t list = bus_read_u32(*r0 + 4u);
+    if (!list) return;
+    const uint32_t keys = bus_read_u32(list);
+    const int count = static_cast<int16_t>(bus_read_u16(list + 6u));
+    for (int i = 0; i < count; ++i) {
+        const uint32_t s = bus_read_u32(keys + 20u * uint32_t(i) + 4u);
+        if (s && bus_read_u8(s) == '1') return;
+    }
+    *r1 = kRomBase;  // "あ", at the start of the mapped fonts
+}
+
+// At the entry of 0x0215EC90(keyboard), the action of a character key
+// (r0 = 0 nothing, 2 typed, 3 typed and full): the kana keyboard's ゛ and ゜
+// keys voice the last kana typed instead (か -> が, は -> ぱ; again: back),
+// and return 2, or 0 when it has no such form.
+NDS_TITLE_HOOK bool Dq9NameKeyboardVoice(uint32_t* r0) {
+    if (!g_built[0].index || !*r0) return false;
+    const uint32_t key = bus_read_u32(*r0);
+    if (!key || bus_read_u8(key + 15u)) return false;
+    const uint32_t s = bus_read_u32(key + 4u);
+    if (!s || bus_read_u8(s) != 0x81 || bus_read_u8(s + 2u) != 0) return false;
+    const uint8_t mark_byte = bus_read_u8(s + 1u);
+    if (mark_byte != 0x4A && mark_byte != 0x4B) return false;
+    const uint8_t mark = mark_byte == 0x4A ? 1 : 2;
+
+    // The last character of the name.
+    const uint32_t text = bus_read_u32(*r0 + 8u);
+    uint32_t last = 0;
+    for (uint32_t p = text; text && bus_read_u8(p);) {
+        const uint8_t c = bus_read_u8(p);
+        const bool two = ((c >= 0x81 && c <= 0x9F) || c >= 0xE0) && bus_read_u8(p + 1u);
+        last = two ? p : 0;
+        p += two ? 2u : 1u;
+    }
+    *r0 = 0;
+    if (!last) return true;
+    const uint16_t code = uint16_t(bus_read_u8(last) << 8 | bus_read_u8(last + 1u));
+    uint16_t base = code;
+    for (const Voicing& v : kVoicing)
+        if (v.voiced == code) base = v.base;
+    uint16_t to = 0;
+    if (base != code) {
+        // Voiced already: the same mark takes it back, the other one swaps.
+        bool same = false;
+        for (const Voicing& v : kVoicing)
+            if (v.voiced == code && v.mark == mark) same = true;
+        if (same) to = base;
+    }
+    if (!to)
+        for (const Voicing& v : kVoicing)
+            if (v.base == base && v.mark == mark) to = v.voiced;
+    if (!to || to == code) return true;
+    bus_write_u8(last, uint8_t(to >> 8));
+    bus_write_u8(last + 1u, uint8_t(to));
+    *r0 = 2;
     return true;
 }
