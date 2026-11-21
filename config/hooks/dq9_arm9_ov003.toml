@@ -114,3 +114,32 @@ address = 0x0215B1DC      # push {r3-r7, lr} (r0 = scene)
 mode = "arm"
 name = "Dq9PowerOffScreen"
 registers = ["r0"]
+
+# The name keyboard, Japanese release: the cursor starts on the first key of
+# a layout with no "1", and the kana keyboard's voicing keys. Handlers:
+# src/hooks/ja_font.cpp (they do nothing without the Japanese fonts).
+#
+# 0x0215F41C(keyboard, str) resets the keyboard with the cursor on the key
+# whose string starts with `str`; 0x0215F4FC(keyboard, str) finds that key.
+# Character creation passes "1".
+[[hook]]
+address = 0x0215F41C      # function entry, before push
+mode = "arm"
+name = "Dq9NameKeyboardFind"
+registers = ["r0", "r1"]
+
+[[hook]]
+address = 0x0215F4FC      # function entry, before push
+mode = "arm"
+name = "Dq9NameKeyboardFind"
+registers = ["r0", "r1"]
+
+# 0x0215EC90(keyboard) -> r0, the action of a character key (the first of
+# the table at 0x0217F3C8): appends its glyph to the name.
+[[hook]]
+address = 0x0215EC90      # function entry, before push
+mode = "arm"
+name = "Dq9NameKeyboardVoice"
+registers = ["r0"]
+on_true = "return"
+on_false = "continue"

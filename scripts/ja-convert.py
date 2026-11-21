@@ -216,15 +216,21 @@ def string_starts(data, pool, size):
 # bg_cm_sx_<LG>.pac): the code loads it, so it stays PAL's even where the
 # Japanese table has its own (YDQJ's file names are not in YDQP's layout).
 FILE_NAME = re.compile(rb"[A-Za-z0-9_/<>%.\-]+\.[A-Za-z0-9]{2,5}")
+# Likewise a model id (mon_data's z000a, the slime's model): the Japanese
+# table has one string per monster, its name, where YDQP's has the name,
+# the model and the plural.
+MODEL_ID = re.compile(rb"[a-z][0-9]{3}[a-z]?")
 
 # Records whose text stays PAL's, by unit and record id (the first
-# argument). Hero names are stored as one byte per glyph of the Latin
-# font, so the name entry's keyboard rows (0x4268..0x4274), its
-# placeholders (0x4A38..) and the random default names (0x4E20..) must be
-# Latin.
+# argument): the name entry's rows (0x4268..0x4274, the Japanese release's
+# kana grid, which YDQP's code does not read; keyboard_*.bin below is the
+# layout) and its placeholders (0x4A38..). The random default names
+# (0x4E20..) are YDQJ's: names are stored one byte per glyph, and the
+# runner's Japanese font gives the kana indices below 256
+# (src/hooks/ja_font.cpp).
 KEEP_PAL_RECORDS = {
     "data/bin/menu/str_cm.gp2::str_cm.nat":
-        lambda rid: 0x4268 <= rid <= 0x4274 or rid >= 0x4A38,
+        lambda rid: 0x4268 <= rid <= 0x4274 or 0x4A38 <= rid < 0x4E20,
 }
 
 
@@ -396,6 +402,9 @@ class Text:
                 if found is not None and FILE_NAME.fullmatch(english):
                     found = None
                     stats["strings: file names"] += 1
+                if found is not None and MODEL_ID.fullmatch(english):
+                    found = None
+                    stats["strings: model ids"] += 1
                 if found is not None and keep_pal and keep_pal(args[0]):
                     found = None
                     stats["strings: kept PAL"] += 1
@@ -571,6 +580,160 @@ def diff_ops(ref, x, jref, y, k=16):
 
 
 # ---------------------------------------------------------------------------
+# The name keyboard
+
+# YDQP's character creation types names on a keyboard laid out by
+# data/bin/keyboard_cm.bin (the hero) and keyboard_cs.bin (companions),
+# drawn by the pages of bg_cm_nm_<lg>.pac. For the Japanese release both
+# become its 50-sound kana grid: hiragana on page 1, katakana on page 2
+# (the shifted strings), and the control column of the grid (カナ/かな,
+# ゜, ゛, back, 自動 = a random name, おわる). The runner voices the last
+# kana for ゛ and ゜ (Dq9NameKeyboardVoice, src/hooks/ja_font.cpp).
+KEYBOARD_FILES = {"data/bin/keyboard_cm.bin", "data/bin/keyboard_cs.bin"}
+KEYBOARD_HIRAGANA = [
+    "あいうえお", "はひふへほ", "かきくけこ", "まみむめも", "さしすせそ", "やゆよわん",
+    "たちつてと", "らりるれろ", "なにぬねの", "ゃゅょっを", "ぁぃぅぇぉ", "ー．…？！"]
+KEYBOARD_KATAKANA = [
+    "アイウエオ", "ハヒフヘホ", "カキクケコ", "マミムメモ", "サシスセソ", "ヤユヨワン",
+    "タチツテト", "ラリルレロ", "ナニヌネノ", "ャュョッヲ", "ァィゥェォ", "ー．…？！"]
+
+
+def keyboard_bytes():
+    """The kana layout, in the keyboard files' format: a header (u32
+    record count, u32 pool offset, u32 pool size, u32 YDQP's own value,
+    left out here), then records: u16 kind, u8 argument count, 2-bit
+    argument types (0 a pool offset, -1 none; 1 an integer), LSB first,
+    padded with 0xFF to 4 bytes, then the u32 arguments. Kinds: 0x64 (the
+    most keys), 0x65 a key (id, x, y, string, shifted string, pages, action,
+    size), 0x66 (the number of grids), 0x67 a grid for the D-pad (pages,
+    columns, rows, key ids by row, -1 none). Actions: 0 type the string,
+    1 switch pages 1 and 2, 5 back, 6 done, 8 a random name. Sizes: 16, 24,
+    32 px wide (0, 1, 2), 16 tall."""
+    pool = bytearray()
+    where = {}
+
+    def string(s):
+        if s is None:
+            return None
+        if s not in where:
+            where[s] = len(pool)
+            pool.extend(s.encode("cp932") + b"\0")
+        return where[s]
+
+    S, I = 0, 1
+    records = [(0x64, [(I, 144)])]
+    grid = []
+    for r in range(6):
+        row = []
+        for c in range(10):
+            block, col = divmod(c, 5)
+            kid = 1 + r * 10 + c
+            x = (24, 112)[block] + 16 * col
+            y = 56 + 16 * r
+            lo = KEYBOARD_HIRAGANA[2 * r + block][col]
+            hi = KEYBOARD_KATAKANA[2 * r + block][col]
+            records.append((0x65, [(I, kid), (I, x), (I, y), (S, string(lo)), (S, string(hi)),
+                                   (I, 3), (I, 0), (I, 0)]))
+            row.append(kid)
+        grid.append(row)
+    controls = [  # (string, pages, action, size)
+        (None, 15, 1, 1),   # カナ / かな
+        ("゜", 3, 0, 1),
+        ("゛", 3, 0, 1),
+        (None, 15, 5, 1),   # back
+        (None, 15, 8, 1),   # 自動
+        (None, 15, 6, 2),   # おわる
+    ]
+    for r, (s, pages, action, size) in enumerate(controls):
+        kid = 61 + r
+        records.append((0x65, [(I, kid), (I, 208), (I, 56 + 16 * r), (S, string(s)),
+                               (S, string(s)), (I, pages), (I, action), (I, size)]))
+        grid[r].append(kid)
+    records.append((0x66, [(I, 1)]))
+    records.append((0x67, [(I, 3), (I, 11), (I, 6)] + [(I, k) for row in grid for k in row]))
+
+    body = bytearray()
+    for kind, args in records:
+        head = bytearray(struct.pack("<HB", kind, len(args)))
+        for i in range(0, len(args), 4):
+            b = 0
+            for k, (t, _) in enumerate(args[i:i + 4]):
+                b |= t << (2 * k)
+            head.append(b)
+        head.extend(b"\xff" * (-len(head) % 4))
+        body += head
+        for _, v in args:
+            body += struct.pack("<i", -1 if v is None else v)
+    at = 16 + len(body)
+    at += -at % 16
+    body.extend(b"\0" * (at - 16 - len(body)))
+    pool.extend(b"\xff" * (-len(pool) % 4))
+    return struct.pack("<III", len(records), at, len(pool)), bytes(body + pool)
+
+
+def pac_members(data):
+    """The members of an animation pac (bg_*.pac): a 0x50-byte header each
+    (the name, then at 0x40 u32 data start, u32 data size, u32 next member,
+    relative to the header), then a header of zeros. [(offset, name,
+    start, size, next)]"""
+    out, p = [], 0
+    while p + 0x50 <= len(data):
+        start, size, nxt = struct.unpack_from("<III", data, p + 0x40)
+        if not nxt:
+            break
+        out.append((p, data[p:p + 0x20].split(b"\0")[0].decode("ascii"), start, size, nxt))
+        p += nxt
+    return out, p
+
+
+# bg_cm_nm_<lg>.pac's members (the game picks them by position): the four
+# keyboard pages, their tiles and palettes from YDQJ's bg_cm_name.pac (the
+# companions' grid, which has 自動), the windows YDQP's own.
+NAME_PAC_UNIT = "data/ani/bg_cm_nm.gp2::bg_cm_nm.pac"
+NAME_PAC_MEMBERS = {
+    "cm_name_chara.bncg": "cm_name_chara.bncg",
+    "cm_name_small.bnsc": "cm_name_hiragana_npc.bnsc",
+    "cm_name_capital.bnsc": "cm_name_katakana_npc.bnsc",
+    "cm_name_europe.bnsc": "cm_name_hiragana_npc.bnsc",
+    "cm_name_symbol.bnsc": "cm_name_katakana_npc.bnsc",
+    "cm_name_npc_pltt.bncl": "cm_name_npc_pltt.bncl",
+    "cm_name_pltt.bncl": "cm_name_pltt.bncl",
+}
+# YDQP's 4x2-tile "?" key for its random-name key, drawn over the page
+# where the grid has its ？ and ！ keys: those (tiles 20..23 of rows 17
+# and 18 of the page).
+NAME_PAC_QUE = "cm_name_que.bnsc"
+
+
+def name_pac_ops(pal_ref, pal_data, jp_ref, jp_data):
+    jm_, _ = pac_members(jp_data)
+    theirs = {name: (off, start, size) for off, name, start, size, _ in jm_}
+    members, end = pac_members(pal_data)
+    out = Ops()
+    for off, name, start, size, nxt in members:
+        if name in NAME_PAC_MEMBERS:
+            joff, jstart, jsize = theirs[NAME_PAC_MEMBERS[name]]
+            new_next = 0x50 + jsize
+            new_next += -new_next % 16
+            out.p(pal_ref, off, 0x40)
+            out.r(struct.pack("<III", 0x50, jsize, new_next))
+            out.p(pal_ref, off + 0x4C, 4)
+            out.j(jp_ref, joff + jstart, jsize)
+            out.z(new_next - 0x50 - jsize)
+        elif name == NAME_PAC_QUE:
+            page_off, page_start, _ = theirs[NAME_PAC_MEMBERS["cm_name_small.bnsc"]]
+            entries = page_off + page_start + 0x10
+            out.p(pal_ref, off, start + 0x10)
+            for row in (17, 18):
+                out.j(jp_ref, entries + 2 * (row * 32 + 20), 8)
+            out.z(nxt - start - 0x20)
+        else:
+            out.p(pal_ref, off, nxt)
+    out.p(pal_ref, end, len(pal_data) - end)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # The plan
 
 class Planner:
@@ -683,7 +846,11 @@ class Planner:
         if ref is not None and self.jp.get(ref) is None:
             ref = None
         out = None
-        if "en" in langs and jm.parse_any(self.pal.get(langs["en"])) is not None:
+        if unit == NAME_PAC_UNIT and ref is not None:
+            out = name_pac_ops(folder_ref(langs["en"]), self.pal.get(langs["en"]),
+                               folder_ref(ref), self.jp.get(ref))
+            self.stats["units: name keyboard"] += 1
+        if out is None and "en" in langs and                 jm.parse_any(self.pal.get(langs["en"])) is not None:
             out = Text(self, unit, langs, ref).build()
             self.stats["units: text"] += 1
         if out is None and ref is not None and                 os.path.splitext(ref)[1].lower() in JP_IMAGES:
@@ -715,6 +882,14 @@ class Planner:
         """Ops for a PAL data file (relative to data/)."""
         if path == FONT_FILE:
             return self.font_ops(path)
+        if path in KEYBOARD_FILES:
+            head, body = keyboard_bytes()
+            out = Ops()
+            out.r(head)
+            out.p(folder_ref(path), 12, 4)
+            out.r(body)
+            self.stats["files: name keyboard"] += 1
+            return out
         e = self.pal.idx[path]
         jpath = self.jp.sha.get(e["sha1"])
         if jpath:
