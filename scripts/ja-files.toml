@@ -9,7 +9,8 @@
 [renames]
 # data/ani: per-language images.
 "data/ani/bg_cm_ms.gp2::bg_cm_ms.pac" = "data/ani/bg_cm_mswin.pac"
-"data/ani/bg_cm_nm.gp2::bg_cm_nm.pac" = "data/ani/bg_cm_name.pac"
+# The name entry stays PAL's Latin keyboard (names are Latin glyphs).
+"data/ani/bg_cm_nm.gp2::bg_cm_nm.pac" = ""
 "data/ani/bg_cm_sx.gp2::bg_cm_sx.pac" = "data/ani/bg_cm_sex.pac"
 "data/ani/bg_jrc.gp2::bg_jrc.pac" = "data/ani/bg_jr_clr.pac"
 "data/ani/bg_jrs.gp2::bg_jrs.pac" = "data/ani/bg_jr_ss.pac"
