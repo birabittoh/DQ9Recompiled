@@ -53,6 +53,7 @@ import hashlib
 import importlib.util
 import math
 import os
+import re
 import struct
 import sys
 import zlib
@@ -211,6 +212,22 @@ def string_starts(data, pool, size):
     return out
 
 
+# A string argument that names a file (data/ani/bg_cm_sx.gp2,
+# bg_cm_sx_<LG>.pac): the code loads it, so it stays PAL's even where the
+# Japanese table has its own (YDQJ's file names are not in YDQP's layout).
+FILE_NAME = re.compile(rb"[A-Za-z0-9_/<>%.\-]+\.[A-Za-z0-9]{2,5}")
+
+# Records whose text stays PAL's, by unit and record id (the first
+# argument). Hero names are stored as one byte per glyph of the Latin
+# font, so the name entry's keyboard rows (0x4268..0x4274), its
+# placeholders (0x4A38..) and the random default names (0x4E20..) must be
+# Latin.
+KEEP_PAL_RECORDS = {
+    "data/bin/menu/str_cm.gp2::str_cm.nat":
+        lambda rid: 0x4268 <= rid <= 0x4274 or rid >= 0x4A38,
+}
+
+
 class Text:
     """A PAL text unit rebuilt with Japanese strings."""
 
@@ -365,6 +382,7 @@ class Text:
         stats = self.plan.stats
         record_words = []  # (record position, [(arg index, new offset)])
         positions = self.record_positions(en)
+        keep_pal = KEEP_PAL_RECORDS.get(self.unit)
         for i, (kind, _, args) in enumerate(en.records):
             idx = sorted(spos.get((kind, len(args)), ()))
             idx = [k for k in idx if args[k] != 0xFFFFFFFF and args[k] in valid]
@@ -375,6 +393,12 @@ class Text:
             for n, k in enumerate(idx):
                 english = en.string(args[k]) or b""
                 found = js[min(n, len(js) - 1)] if js is not None else None
+                if found is not None and FILE_NAME.fullmatch(english):
+                    found = None
+                    stats["strings: file names"] += 1
+                if found is not None and keep_pal and keep_pal(args[0]):
+                    found = None
+                    stats["strings: kept PAL"] += 1
                 if found is not None:
                     text, src, at = found
                     spans = ja_text.convert_spans(text, english)
