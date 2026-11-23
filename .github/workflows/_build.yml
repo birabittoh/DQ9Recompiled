@@ -37,6 +37,9 @@ env:
   DISCORD_SDK_AAR: discord_partner_sdk.aar
   DISCORD_SDK_SHA1: afda182472218faf9f15a6a3417a9b7a3bcfa02c
   SDL3_VERSION: "3.4.14"
+  # MSVC 14.52's STL rejects Clang < 22 (STL1000), but the Windows image
+  # ships LLVM 20; the Windows leg explicitly upgrades to this version.
+  LLVM_VERSION: "22.1.8"
   # The android-arm64 leg only runs its steps when vars.ANDROID_BUILD is
   # 'true', so it can be switched off without editing the workflow.
   ANDROID_BUILD: ${{ vars.ANDROID_BUILD == 'true' }}
@@ -126,7 +129,12 @@ jobs:
 
       - name: Install LLVM, CMake, Ninja (Windows)
         if: matrix.platform == 'win-amd64'
-        run: choco install llvm cmake ninja -y
+        run: |
+          # `choco install` no-ops when the image's LLVM 20 is already present,
+          # but MSVC 14.52's STL requires Clang 22 or newer.
+          choco upgrade llvm --version=${{ env.LLVM_VERSION }} -y
+          choco install cmake ninja -y
+          clang++ --version
 
       - name: Install Android NDK
         if: matrix.platform == 'android-arm64' && env.ANDROID_BUILD == 'true'
