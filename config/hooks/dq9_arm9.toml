@@ -803,3 +803,15 @@ registers = ["r0", "r10"]
 on_true = "jump"
 jump_address = 0x02067E58 # add sp, sp, #0xC ; pop {r4-r11, pc}
 on_false = "continue"
+
+# The message word wrap 0x0206B984 does not break a line at its own start
+# (a space-less Japanese line a little wider than the limit went down a
+# row, under the window). Handler: Dq9WrapAtLineStart, src/hooks/ja_font.cpp.
+[[hook]]
+address = 0x0206BDE8      # bge 0x0206BEA8 (no break; [sp+0x20] = break point's output)
+mode = "arm"
+name = "Dq9WrapAtLineStart"
+registers = ["sp"]
+on_true = "jump"
+jump_address = 0x0206BEA8 # add r11, r11, #1 (the no-break path)
+on_false = "continue"
