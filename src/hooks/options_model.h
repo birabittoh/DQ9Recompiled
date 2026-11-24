@@ -71,7 +71,7 @@ inline std::string Slug(const std::string& text) {
 // [options] `key` in the game's language, or `english`.
 inline std::string Text(const std::string& key, const std::string& english) {
     const char* text = dq9::Tr("options", key.c_str(),
-                               bus_read_u8(dq9::kGameTextLanguage));
+                               dq9::TextLanguage());
     return *text ? text : english;
 }
 
@@ -321,36 +321,56 @@ inline std::string DescriptionText(const Row& row) {
 }
 
 // `text` in at most `max_lines` lines of `line_chars` characters (a <tag>
-// counts as one).
+// counts as one, a two-byte Shift JIS character of the Japanese text as two:
+// it is twice as wide, and a line may break after it).
 inline std::vector<std::string> Wrap(const std::string& text, size_t line_chars,
                                      size_t max_lines) {
     std::vector<std::string> lines;
-    std::string line;
-    size_t width = 0;
-    size_t pos = 0;
-    while (pos < text.size() && lines.size() < max_lines) {
-        const size_t end = text.find(' ', pos);
-        const std::string word =
-            text.substr(pos, end == std::string::npos ? end : end - pos);
-        pos = end == std::string::npos ? text.size() : end + 1;
-        size_t word_width = 0;
-        for (size_t i = 0; i < word.size(); ++i, ++word_width) {
-            if (word[i] != '<') continue;
-            const size_t close = word.find('>', i);
-            if (close != std::string::npos) i = close;
-        }
-        if (!line.empty() && width + 1 + word_width > line_chars) {
+    std::string line, word;
+    size_t width = 0, word_width = 0;
+    bool space = false;  // a space comes before `word`
+    auto flush = [&]() {
+        if (word.empty()) return;
+        const size_t gap = !line.empty() && space ? 1 : 0;
+        if (!line.empty() && width + gap + word_width > line_chars) {
             lines.push_back(line);
             line.clear();
             width = 0;
         }
-        if (!line.empty()) {
+        if (!line.empty() && space) {
             line += ' ';
             ++width;
         }
         line += word;
         width += word_width;
+        word.clear();
+        word_width = 0;
+        space = false;
+    };
+    for (size_t i = 0; i < text.size() && lines.size() < max_lines; ++i) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (c == ' ') {
+            flush();
+            space = true;
+        } else if (((c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC)) &&
+                   i + 1 < text.size()) {
+            flush();
+            word = text.substr(i, 2);
+            word_width = 2;
+            ++i;
+            flush();
+        } else if (c == '<') {
+            const size_t close = text.find('>', i);
+            const size_t end = close == std::string::npos ? i : close;
+            word += text.substr(i, end - i + 1);
+            ++word_width;
+            i = end;
+        } else {
+            word += static_cast<char>(c);
+            ++word_width;
+        }
     }
+    flush();
     if (!line.empty() && lines.size() < max_lines) lines.push_back(line);
     return lines;
 }

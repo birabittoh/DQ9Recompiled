@@ -15,14 +15,14 @@ import tomllib
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 LANG_DIR = os.path.join(ROOT, "res", "lang")
 OUT_PATH = os.path.join(ROOT, "src", "hooks", "lang.generated.h")
-CODES = ["en", "fr", "de", "it", "es"]  # DS language codes 1..5
+CODES = ["en", "fr", "de", "it", "es", "ja"]  # DS language codes 1..5, then 6 = Japanese
 
 
-def c_string(text):
+def c_string(text, encoding="utf8"):
     # Octal escapes for anything outside printable ASCII: unlike \x they
     # stop after three digits, so a following character can't extend them.
     out = []
-    for b in text.encode("utf8"):
+    for b in text.encode(encoding):
         if b in (0x22, 0x5C):
             out.append("\\" + chr(b))
         elif 0x20 <= b < 0x7F:
@@ -55,7 +55,7 @@ def main():
         "struct LangText {",
         "    const char* section;",
         "    const char* key;",
-        "    const char* text[5];  // en fr de it es (DS language codes 1..5)",
+        "    const char* text[6];  // en fr de it es (DS language codes 1..5), ja (6)",
         "};",
         "",
         "inline constexpr LangText kLangTexts[] = {",
@@ -64,7 +64,8 @@ def main():
         texts = []
         for code in CODES:
             value = langs.get(code, {}).get(sec, {}).get(key)
-            texts.append(c_string(value) if isinstance(value, str) else "nullptr")
+            texts.append(c_string(value, "cp932" if code == "ja" else "utf8")
+                         if isinstance(value, str) else "nullptr")
         lines.append(f'    {{"{sec}", "{key}", {{{", ".join(texts)}}}}},')
     lines += ["};", "", "}  // namespace dq9", ""]
     text = "\n".join(lines)

@@ -561,7 +561,7 @@ std::string UpdateRowVersion() {
 // "Update to <version>", in the language the game shows its text in.
 std::string UpdateRowText(const std::string& version) {
     std::string text = dq9::Tr("main_menu", "update",
-                               bus_read_u8(dq9::kGameTextLanguage));
+                               dq9::TextLanguage());
     const size_t at = text.find("{}");
     if (at != std::string::npos) text.replace(at, 2, version);
     return text;
@@ -811,7 +811,7 @@ NDS_TITLE_HOOK void Dq9OptionsRowText(uint32_t* cell) {
     }
     WriteString(kTextBuffer, kTextBufferSize,
                 dq9::Tr("main_menu", "options",
-                        bus_read_u8(dq9::kGameTextLanguage)));
+                        dq9::TextLanguage()));
     bus_write_u32(*cell + kCellText, kTextBuffer);
 }
 
@@ -920,7 +920,7 @@ void SetCellText(uint32_t scene, uint32_t id, uint32_t address, uint32_t size,
 // version line.
 void QueueBuilderCalls(uint32_t scene, uint32_t rows) {
     std::deque<GuestCall>& q = g_builder.queue;
-    const uint32_t language = bus_read_u8(dq9::kGameTextLanguage);
+    const uint32_t language = dq9::TextLanguage();
 
     // 0x0216AFB0(scene, cell, group, layer, text, x, y, 10, enabled); the
     // layout hook below places the rows.

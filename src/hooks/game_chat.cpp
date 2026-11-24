@@ -218,7 +218,7 @@ NDS_TITLE_HOOK void Dq9ChatGreetingText(uint32_t* scene) {
 NDS_TITLE_HOOK void Dq9ChatGreetingPrompt(uint32_t* title) {
     if (g_step != Step::Editing) return;
     dq9::options::WriteString(kPromptText, kPromptTextSize,
-                dq9::Tr("chat", "prompt", bus_read_u8(dq9::kGameTextLanguage)));
+                dq9::Tr("chat", "prompt", dq9::TextLanguage()));
     *title = kPromptText;
 }
 
