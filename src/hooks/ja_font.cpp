@@ -599,6 +599,27 @@ NDS_TITLE_HOOK bool Dq9GlyphCellWait(uint32_t* r0, uint32_t* r10) {
     return true;
 }
 
+// The message word wrap 0x0206B984 breaks a line too wide for the window at
+// its last break point: after a space-less glyph run that is the start of
+// the line, so the break only adds an empty line and pushes the line down
+// (Japanese text has no spaces: a line a few pixels wider than YDQP's limit
+// lands one row lower, below the window). At its decision (0x0206BDE8,
+// bge = no break), true (no break) when the break point's output position
+// ([sp+0x20]) follows a line or page start: the newline code 0xFF18 (what
+// "\n" became, and what the wrap itself writes), a raw "\n", or <PAGE>.
+NDS_TITLE_HOOK bool Dq9WrapAtLineStart(uint32_t* sp) {
+    const uint32_t out = bus_read_u32(*sp + 0x20u);
+    if (out < 6) return false;
+    const auto at = [out](uint32_t back) { return bus_read_u8(out - back); };
+    if (at(2) == 0x18 && at(1) == 0xFF) return true;
+    if (at(2) == '\\' && at(1) == 'n') return true;
+    if (at(1) == '\n') return true;
+    static const char kPage[] = "<PAGE>";
+    for (uint32_t i = 0; i < 6; ++i)
+        if (at(6 - i) != static_cast<uint8_t>(kPage[i])) return false;
+    return true;
+}
+
 // The name keyboard (overlay 3; layouts data/bin/keyboard_cm.bin and
 // keyboard_cs.bin, which the Japanese release's conversion replaces with
 // its kana grid). Keyboard: +0 the key under the cursor, +4 the key list
