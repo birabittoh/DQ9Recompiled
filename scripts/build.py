@@ -265,7 +265,7 @@ def make_ja_folder(python):
         return None
     os.makedirs(work, exist_ok=True)
     inputs = [os.path.join("scripts", n) for n in (
-        "ja-convert.py", "ja_text.py", "ja-map.py", "ja-files.toml",
+        "ja-convert.py", "ja_text.py", "ja-map.py", "ja-files.toml", "ja-strings.toml",
         "l5_archive.py", "dq9_text_table.py")] + [
         os.path.join(jp, "rom.toml"), os.path.join(ROM_DIR, "rom.toml")]
     stamp = os.path.join(work, "plan.stamp")

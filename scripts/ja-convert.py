@@ -233,6 +233,17 @@ KEEP_PAL_RECORDS = {
         lambda rid: 0x4268 <= rid <= 0x4274 or 0x4A38 <= rid < 0x4E20,
 }
 
+# Japanese lines for units YDQJ has no file for (its code writes them):
+# {unit: {record id: Shift-JIS line in YDQP's form}}.
+JA_STRINGS_FILE = os.path.join(ROOT, "scripts", "ja-strings.toml")
+
+
+def load_ja_strings(path=JA_STRINGS_FILE):
+    with open(path, "rb") as f:
+        units = tomllib.load(f)
+    return {unit: {int(k, 0): v.encode("cp932") for k, v in lines.items()}
+            for unit, lines in units.items()}
+
 
 class Text:
     """A PAL text unit rebuilt with Japanese strings."""
@@ -389,6 +400,7 @@ class Text:
         record_words = []  # (record position, [(arg index, new offset)])
         positions = self.record_positions(en)
         keep_pal = KEEP_PAL_RECORDS.get(self.unit)
+        own_lines = self.plan.ja_strings.get(self.unit, {})
         for i, (kind, _, args) in enumerate(en.records):
             idx = sorted(spos.get((kind, len(args)), ()))
             idx = [k for k in idx if args[k] != 0xFFFFFFFF and args[k] in valid]
@@ -408,7 +420,11 @@ class Text:
                 if found is not None and keep_pal and keep_pal(args[0]):
                     found = None
                     stats["strings: kept PAL"] += 1
-                if found is not None:
+                if args and args[0] in own_lines and n == 0:
+                    converted = own_lines[args[0]]
+                    pieces = [(R, converted)]
+                    stats["strings: ja-strings.toml"] += 1
+                elif found is not None:
                     text, src, at = found
                     spans = ja_text.convert_spans(text, english)
                     pieces = [(J, src, at + a, b - a) if kind == "keep" else (R, a)
@@ -741,6 +757,7 @@ class Planner:
         self.sources = jm.Sources(self.jp.idx, files["renames"],
                                   files.get("pal_only", {}).get("prefixes", []))
         self.stats = collections.Counter()
+        self.ja_strings = load_ja_strings()
         jp_sha = set(self.jp.sha)
         self.units, _ = jm.pal_units(self.pal.idx, jp_sha)
         # PAL ref (relative to data/) of every language -> its unit
