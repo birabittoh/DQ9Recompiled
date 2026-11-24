@@ -1,0 +1,15 @@
+# A member's profile page over a slow link (handler
+# src/hooks/profile_page.cpp): the last load step 0x0218AA24 draws the
+# birthday panel from the record before an internet reply has filled it.
+# The step waits for the reply.
+version = 1
+
+[program]
+bank = "dq9_arm9_ov008"
+sha1 = "e7df3f7f474b011091b74fcf867e523996675eff"
+
+[[hook]]
+address = 0x02189BE0      # cmp r0, #0 (r0 = 0x02094B5C, r10 = page)
+mode = "arm"
+name = "Dq9ProfilePageReady"
+registers = ["r0", "r10"]
