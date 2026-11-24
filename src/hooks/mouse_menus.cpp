@@ -615,7 +615,11 @@ void HoverTabs(unsigned busy, const int ids[4], int count) {
     g_raised_x = -1;
     for (int i = 0; i < 4; ++i) {
         const uint32_t state = kTabState + kTabStateSize * static_cast<uint32_t>(i);
-        if (blocked || i >= count || ids[i] < 0) {
+        // Left alone while blocked, but still owned: a tab clicked into the
+        // equipment page is lowered on the way back if the mouse is gone.
+        // The row can be missing then too (count 0): keep the flags.
+        if (blocked || count == 0) continue;
+        if (i >= count || ids[i] < 0) {
             raised_by_hover[i] = false;
             continue;
         }
@@ -638,6 +642,9 @@ void HoverTabs(unsigned busy, const int ids[4], int count) {
                 g_raised_top = top;
             }
         } else if (raised_by_hover[i]) {
+            // A rise asked while the tab was still lowering waits for mode 1:
+            // left pending, it would raise the tab after the mouse has gone.
+            if (bus_read_u8(state + 1u) == 3) bus_write_u8(state + 1u, 0);
             if (mode == kTabUp || mode == kTabRising) bus_write_u8(state + 1u, 4);
             else if (mode == kTabDown) raised_by_hover[i] = false;
         }
