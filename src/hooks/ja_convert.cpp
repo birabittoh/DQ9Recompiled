@@ -362,6 +362,7 @@ bool Prepare(const fs::path& source, const fs::path& out, bool* prepared,
     return true;
 }
 
-const bool kRegistered = (nds_release_set_prepare(Prepare), true);
+// A folder converted by another plan is converted again.
+const bool kRegistered = (nds_release_set_prepare(Prepare, DQ9_JA_PLAN_SHA1), true);
 
 }  // namespace

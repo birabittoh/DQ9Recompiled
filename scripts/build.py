@@ -301,12 +301,14 @@ def write_ja_plan_inc():
         size = len(raw)
         packed = zlib.compress(raw, 9)
         lines.append(f"#define DQ9_JA_PLAN_SIZE {size}u\n")
+        lines.append(f'#define DQ9_JA_PLAN_SHA1 "{hashlib.sha1(raw).hexdigest()}"\n')
         lines.append("static const unsigned char kJaPlan[] = {\n")
         for i in range(0, len(packed), 32):
             lines.append(",".join(str(b) for b in packed[i:i + 32]) + ",\n")
         lines.append("};\n")
     else:
         lines.append("#define DQ9_JA_PLAN_SIZE 0u\n")
+        lines.append('#define DQ9_JA_PLAN_SHA1 ""\n')
         lines.append("static const unsigned char kJaPlan[] = {0};\n")
     text = "".join(lines)
     if os.path.exists(out):
