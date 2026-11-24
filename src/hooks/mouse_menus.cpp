@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "battle_multipliers.h"
 #include "dq9_scene.h"
 #include "title_hooks.h"
 #include "title_settings.h"
@@ -557,19 +558,46 @@ unsigned FieldBusy(uint32_t field) {
     return why;
 }
 
-// The party's size (the names row follows the party order, a list of
-// character ids, not always 0..3 in order: ctx+22296, count at ctx+22300).
-int PartyCount() {
-    const int count = bus_read_u8(kCtx + 22300u);
-    return count > 4 ? 4 : count;
+// The names row's own list, on the top-screen object (field+14032, which the
+// field step hands to 0x02022DD8): the character id shown at each position
+// (u8s at +1880, count at +1884; 0x02027110 draws position i at x = 64 * i),
+// and a mask of ids whose tab is not drawn (+1885). Alone it is the party
+// order; in multiplayer the players' ids (0 = the host's hero), with this
+// machine's own anywhere in it.
+constexpr uint32_t kFieldTop = 14032u;
+constexpr uint32_t kTopTabIds = 1880u, kTopTabCount = 1884u, kTopTabHidden = 1885u;
+
+// The id at each position, -1 for a tab not drawn; returns the count.
+int TabRow(uint32_t field, int ids[4]) {
+    const uint32_t top = field != 0 ? bus_read_u32(field + kFieldTop) : 0u;
+    if (top < 0x02000000u || top >= 0x02400000u) return 0;
+    int count = bus_read_u8(top + kTopTabCount);
+    if (count > 4) count = 4;
+    const uint8_t hidden = bus_read_u8(top + kTopTabHidden);
+    for (int i = 0; i < count; ++i) {
+        const int id = bus_read_u8(top + kTopTabIds + static_cast<uint32_t>(i));
+        ids[i] = id < 8 && (hidden & (1u << id)) != 0 ? -1 : id;
+    }
+    return count;
 }
 
+// This machine's player's id (0x020100B8): 0 alone or hosting, a guest's own
+// index in someone else's world.
+constexpr uint32_t kCtxOwnId = 940u;
+
 // Whether the member with this character id has an equipment page. The camp
-// menu lists for Equipment only the party members that 0x0200FE00(ctx, id)
-// finds (the u32 at ctx+8+4*id, with bit 0x800 of its first u16) and whose
-// u32 at +0x1C4 is 0 (overlay 2, 0x02155458); the others are left out.
+// menu (overlay 2, 0x02155458) lists for Equipment only this machine's party,
+// the ids 0x020114A4 copies from ctx+22296 (count at ctx+22300; a host's
+// guests are not in it), that 0x0200FE00(ctx, id) finds (the u32 at
+// ctx+8+4*id, with bit 0x800 of its first u16) and whose u32 at +0x1C4 is 0.
 bool HasEquipmentPage(int id) {
     if (id < 0 || id >= 0xE9) return false;
+    int count = bus_read_u8(kCtx + 22300u);
+    if (count > 4) count = 4;
+    bool in_party = false;
+    for (int i = 0; i < count; ++i)
+        if (bus_read_u8(kCtx + 22296u + static_cast<uint32_t>(i)) == id) in_party = true;
+    if (!in_party) return false;
     const uint32_t member = bus_read_u32(kCtxPartyEntity + 4u * static_cast<uint32_t>(id));
     if (member == 0 || (bus_read_u16(member) & 0x800u) == 0) return false;
     return bus_read_u32(member + 0x1C4u) == 0;
@@ -579,16 +607,15 @@ bool HasEquipmentPage(int id) {
 // the tab's own state, so it moves (and shows the status) as when the camp
 // menu raises it. Only the tabs the hover raised are lowered by it; while a
 // scene runs (the camp menu, a shop...) the tabs are left to the game.
-void HoverTabs(unsigned busy) {
+void HoverTabs(unsigned busy, const int ids[4], int count) {
     static bool raised_by_hover[4] = {false, false, false, false};
     const bool blocked = (busy & (2u | 4u | 8u | 16u)) != 0;
     int px = 0, py = 0;
     const bool over = nds_title_top_pointer(&px, &py);
-    const int count = PartyCount();
     g_raised_x = -1;
     for (int i = 0; i < 4; ++i) {
         const uint32_t state = kTabState + kTabStateSize * static_cast<uint32_t>(i);
-        if (blocked || i >= count) {
+        if (blocked || i >= count || ids[i] < 0) {
             raised_by_hover[i] = false;
             continue;
         }
@@ -621,28 +648,32 @@ void HoverTabs(unsigned busy) {
 
 // Entry of 0x0218CBD4 (the field step, r0 = field), every field frame: the
 // hover on the names row, then a click on it, which jumps to 0x021A120C with
-// r1 = 3 (the equipment page) and r2 = the member's character id.
+// r1 = 3 (the equipment page) and r2 = the member's character id. Only the
+// members the camp menu would list open it (HasEquipmentPage): a host's own
+// party, not the guests; a guest, whose party stays home, only its own tab.
 NDS_TITLE_HOOK bool Dq9TopScreenClick(uint32_t* field, uint32_t* kind,
                                       uint32_t* slot) {
     const unsigned busy = FieldBusy(*field);
-    HoverTabs(busy);
+    int ids[4] = {-1, -1, -1, -1};
+    const int count = TabRow(*field, ids);
+    HoverTabs(busy, ids, count);
     static unsigned seen = 0;
     int x = 0, y = 0;
     const unsigned clicks = nds_title_top_click(&x, &y);
     if (clicks == seen) return false;
     seen = clicks;
     const bool idle = busy == 0;
-    int members[4];
-    const int count = PartyCount();
-    for (int i = 0; i < count; ++i) members[i] = bus_read_u8(kCtx + 22296u + i);
     int hit = -1;
     const bool on_raised = g_raised_x >= 0 && x >= g_raised_x &&
                            x < g_raised_x + kTabWidth && y >= g_raised_top;
     if (idle && (y >= kRowTop || on_raised) && x >= 0 && x / kTabWidth < count)
         hit = x / kTabWidth;
-    if (hit < 0 || !HasEquipmentPage(members[hit])) return false;
+    if (hit < 0 || ids[hit] < 0 || !HasEquipmentPage(ids[hit])) return false;
+    if (dq9::VisitingAnotherWorld() &&
+        static_cast<uint32_t>(ids[hit]) != bus_read_u32(kCtx + kCtxOwnId))
+        return false;
     *kind = 3u;
-    *slot = static_cast<uint32_t>(members[hit]);
+    *slot = static_cast<uint32_t>(ids[hit]);
     return true;
 }
 
