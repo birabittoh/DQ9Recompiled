@@ -29,6 +29,9 @@
 "data/ani/comb.gp2::comb.pac" = "data/ani/com_base.pac"
 # Not obj_guestlist.pac (another format): keeps PAL's.
 "data/ani/gl.gp2::gl.pac" = ""
+# Battle sprites: YDQJ's obj_bt is another sheet (32 cells, YDQP's code
+# picks from its own 40: the party tabs' class icon and level vanish).
+"data/ani/obj_bt3.gp2::obj_bt3.pac" = ""
 "data/ani/obj_shop.gp2::obj_shop.pac" = "data/ani/obj_shop3.pac"
 "data/ani/odqa.gp2::odqa.pac" = "data/ani/obj_dqa.pac"
 "data/ani/oiij.gp2::oiij.pac" = "data/ani/obj_iij.pac"
