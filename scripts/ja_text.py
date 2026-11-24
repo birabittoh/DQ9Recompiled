@@ -87,6 +87,8 @@ PAL_ARG = re.compile(
     rb"|<(str_\d+|val_\d+)>"
     rb"|(%[-+ 0#]*\d*[sdcuxX])")
 PRINTF = rb"%[-+ 0#]*\d*[sdcuxX]"
+# A value YDQP writes inside a tag (<ST=<val_10>,0>): its key.
+NESTED_VALUE = re.compile(rb"<[A-Za-z_]+=[^<>]*<((?:val|str)_\d+)>")
 NUMBER_TYPES = b"dcuxX"
 # YDQJ's named placeholders (actmsg): their role (None: a number).
 JP_NAMED = {
@@ -135,13 +137,23 @@ class Binding:
     `pad` (printf conversions to spend before it: YDQP's line has more of
     them, the ones the Japanese line skips come first)."""
 
-    def __init__(self, tokens, pal, has=()):
+    def __init__(self, tokens, pal, has=(), forced=None):
         self.map, self.pad, self.unbound = {}, {}, []
+        # Bindings given for the record (ja-strings.toml), by the YDQP form
+        # of the placeholder (<str_1> for [文字列1]), come first.
+        for tok, tag in (forced or {}).items():
+            for t in tokens:
+                if t[0] == tok or t[0].startswith(tok + b"#") or (
+                        t[2] is not None and b"<" + t[2] + b">" == tok):
+                    self.map[t[0]] = tag
+        tokens = [t for t in tokens if t[0] not in self.map]
         # The names the Japanese line writes itself (<LEADER>) are no
         # value of its to bind.
-        free = [r for r in pal_roles(pal) if r[0] not in has]
+        free = [r for r in pal_roles(pal) if r[0] not in has and
+                r[2] not in self.map.values()]
         if not free:
             return
+        nested = set(NESTED_VALUE.findall(pal or b""))
         printf_roles = [r for r in free if r[0].startswith(b"%")]
 
         def take(pred):
@@ -170,6 +182,10 @@ class Binding:
             hit = None
             if key is not None:
                 hit = take(lambda r: r[0] == key)
+                if hit is None and t[3]:
+                    # One inside a tag (<ST=[数値10],0>): the value the
+                    # English line has inside one (<ST=<val_1>,0>).
+                    hit = take(lambda r: r[0] in nested and r[1] == kind)
                 if hit is None and key == b"ACTION":
                     hit = take(lambda r: r[0].startswith(b"I_NAME"))
                 if hit is None and key in NAMED_ROLES:
@@ -270,14 +286,15 @@ def names_written(jp):
     return out
 
 
-def convert(jp, pal=None):
+def convert(jp, pal=None, forced=None):
     """`jp` (a YDQJ string, no NUL) as YDQP writes it. `pal`, the English
-    line of the same record if there is one, picks the conditions."""
+    line of the same record if there is one, picks the conditions and the
+    values; `forced` ({YDQJ placeholder: YDQP tag}) binds some itself."""
     return b"".join(jp[a:b] if kind == "keep" else a
-                    for kind, a, b in convert_spans(jp, pal))
+                    for kind, a, b in convert_spans(jp, pal, forced))
 
 
-def convert_spans(jp, pal=None):
+def convert_spans(jp, pal=None, forced=None):
     """`convert` as pieces: ("keep", start, end) for bytes of `jp` kept as
     they are, ("new", bytes, None) for what replaces the rest."""
     cs = list(chars(jp))
@@ -285,7 +302,13 @@ def convert_spans(jp, pal=None):
     for c in cs:
         pos.append(pos[-1] + len(c))
     wanted = conditions_of(pal)
-    binding = Binding(jp_tokens(jp), pal, names_written(jp)) if pal else None
+    binding = (Binding(jp_tokens(jp), pal, names_written(jp), forced)
+               if pal or forced else None)
+    # Tags the English line writes a value inside: <ST=<val_10>,0>, or
+    # made when the line is shown (<<>W=<val_1>>: "<", "W=", the value).
+    nests = {m.group(1) for m in re.finditer(rb"<([A-Za-z_]+)=[^<>]*<", pal or b"")}
+    built = {m.group(1) for m in re.finditer(rb"<<>([A-Za-z_]+)=", pal or b"")}
+    nests |= built
     n_conv = [0]
 
     def bound(tok):
@@ -297,10 +320,11 @@ def convert_spans(jp, pal=None):
         return bound(m.group() + b"#" + str(n_conv[0]).encode())
 
     def in_tag(name):
-        """A tag's name with the placeholders in it bound (printf ones
-        only: a tag cannot hold one), and how many times to write it
-        before (Binding.pad)."""
+        """A tag's name with the placeholders in it bound (printf ones,
+        and <val_N>/<str_N> in a tag the English line writes one in), and
+        how many times to write it before (Binding.pad)."""
         pad = [0]
+        nest = name.split(b"=", 1)[0] in nests
 
         def sub(m):
             tok = m.group()
@@ -311,7 +335,10 @@ def convert_spans(jp, pal=None):
                 b = bound(tok)
             if binding:
                 pad[0] = max(pad[0], binding.pad.get(tok, 0))
-            return b if b is not None and not b.startswith(b"<") else m.group()
+            if b is not None and (not b.startswith(b"<") or
+                                  nest and re.fullmatch(rb"<(?:val|str)_\d+>", b)):
+                return b
+            return m.group()
         return re.sub(PRINTF + rb"|\[[^\[\]/<>]{1,16}\]", sub, name), pad[0]
 
     out = []
@@ -357,7 +384,9 @@ def convert_spans(jp, pal=None):
             elif re.fullmatch(rb"(str|val)_\d+", name) and bound(b"<" + name + b">"):
                 new(bound(b"<" + name + b">"))
             elif bound_name != name:
-                new((b"<" + bound_name + b">") * (pad + 1))
+                opener = b"<<>" if (name.split(b"=", 1)[0] in built and
+                                    re.search(rb"<(?:val|str)_\d+>", bound_name)) else b"<"
+                new((opener + bound_name + b">") * (pad + 1))
             else:
                 keep(i, end)
             i = end

@@ -234,14 +234,21 @@ KEEP_PAL_RECORDS = {
 }
 
 # Japanese lines for units YDQJ has no file for (its code writes them):
-# {unit: {record id: Shift-JIS line in YDQP's form}}.
+# {unit: {record id: Shift-JIS line in YDQP's form}}. A record's entry can
+# instead bind placeholders of YDQJ's own line ({"<str_1>": "<TARGET>"}),
+# where YDQP's code gives the value another way.
 JA_STRINGS_FILE = os.path.join(ROOT, "scripts", "ja-strings.toml")
 
 
 def load_ja_strings(path=JA_STRINGS_FILE):
     with open(path, "rb") as f:
         units = tomllib.load(f)
-    return {unit: {int(k, 0): v.encode("cp932") for k, v in lines.items()}
+
+    def value(v):
+        if isinstance(v, dict):
+            return {a.encode("cp932"): b.encode("cp932") for a, b in v.items()}
+        return v.encode("cp932")
+    return {unit: {int(k, 0): value(v) for k, v in lines.items()}
             for unit, lines in units.items()}
 
 
@@ -420,13 +427,19 @@ class Text:
                 if found is not None and keep_pal and keep_pal(args[0]):
                     found = None
                     stats["strings: kept PAL"] += 1
-                if args and args[0] in own_lines and n == 0:
-                    converted = own_lines[args[0]]
+                # A whole line is the record's first string; bindings
+                # apply to each.
+                own = own_lines.get(args[0]) if args else None
+                forced = own if isinstance(own, dict) else None
+                if own is not None and forced is None and n == 0:
+                    converted = own
                     pieces = [(R, converted)]
                     stats["strings: ja-strings.toml"] += 1
                 elif found is not None:
                     text, src, at = found
-                    spans = ja_text.convert_spans(text, english)
+                    spans = ja_text.convert_spans(text, english, forced)
+                    if forced:
+                        stats["strings: ja-strings.toml bindings"] += 1
                     pieces = [(J, src, at + a, b - a) if kind == "keep" else (R, a)
                               for kind, a, b in spans]
                     converted = b"".join(text[a:b] if kind == "keep" else a
