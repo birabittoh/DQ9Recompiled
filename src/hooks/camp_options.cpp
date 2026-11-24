@@ -110,7 +110,7 @@ Camp g_camp;
 
 int16_t S16(uint32_t value) { return static_cast<int16_t>(value & 0xFFFFu); }
 
-uint32_t Language() { return bus_read_u8(dq9::kGameTextLanguage); }
+uint32_t Language() { return dq9::TextLanguage(); }
 
 bool InMainRam(uint32_t address, uint32_t size) {
     return address >= 0x02000000u && address + size <= 0x02400000u;

@@ -51,6 +51,7 @@
 #include "title_hooks.h"
 
 #include "l5_archive.h"
+#include "lang.h"
 
 namespace {
 
@@ -497,12 +498,21 @@ int32_t FindGlyph(uint32_t str, uint32_t font) {
     return -1;
 }
 
+bool g_ja_fonts = false;
+
 }  // namespace
+
+namespace dq9 {
+uint32_t TextLanguage() {
+    return g_ja_fonts ? 6u : bus_read_u8(kGameTextLanguage);
+}
+}  // namespace dq9
 
 // After the game loads its fonts (0x02042954, before its last call): adds
 // the Japanese glyphs when the cartridge carries them.
 NDS_TITLE_HOOK void Dq9JaFont() {
     for (Built& b : g_built) b = Built{};
+    g_ja_fonts = false;
     nds_bus_map_title_rom(0, nullptr, 0);
     const uint8_t* file = nullptr;
     uint32_t size = 0;
@@ -547,6 +557,7 @@ NDS_TITLE_HOOK void Dq9JaFont() {
         bus_write_u32(kIndexTable + 4u * f, g_built[f].index);
         bus_write_u32(kBitmapTable + 4u * f, g_built[f].bitmap);
     }
+    g_ja_fonts = true;
     std::fprintf(stderr, "[ja-font] %zu + %zu glyphs, %zu bytes at 0x%08X\n",
                  f12.size(), f10.size(), g_rom.size(), kRomBase);
 }
