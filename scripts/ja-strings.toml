@@ -102,3 +102,43 @@
 0x3E9 = 'エラー'
 0x3F2 = 'エラー'
 0x3F4 = '<val_1>ゴールドを　手に入れた！'
+
+# Lines YDQJ has, whose placeholders YDQP's code fills another way: the
+# value the English line has instead, or a line without the one YDQP's
+# code does not give.
+
+# The profile card's birthday: YDQP gives the month as a string (JAN...)
+# from this table, the day as <val_3>.
+["data/bin/tlkpcstr.gp2::tlkpcstr.bin"]
+0x1F8 = { "<val_2>" = "<str_1>" }
+0x1FA = '1'
+0x1FB = '2'
+0x1FC = '3'
+0x1FD = '4'
+0x1FE = '5'
+0x1FF = '6'
+0x200 = '7'
+0x201 = '8'
+0x202 = '9'
+0x203 = '10'
+0x204 = '11'
+0x205 = '12'
+
+# Who would change vocation: the target (as in Italian).
+["data/bin/menu/str_dam.gp2::str_dam.nat"]
+0x1F = { "<str_1>" = "<TARGET>" }
+
+["data/bin/menu/str_tm.gp2::str_tm.nat"]
+0x233A = 'しかし　なにも　おきなかった。<ST=<val_10>,0>'
+0x754D = { "<str_1>" = "<ACTOR>" }
+
+# Captain Max Meddlin: the medals the player brought.
+["data/bin/menu/str_mdl.gp2::str_mdl.bin"]
+0x20 = { "<str_1>" = "<HERO>" }
+0x32 = { "<str_1>" = "<HERO>" }
+0x78 = { "<str_1>" = "<HERO>" }
+0x96 = { "<str_1>" = "<HERO>" }
+
+# Time spent together: YDQP's line is the number alone.
+["data/menu/str_mate.gp2::str_mate.bin"]
+0x23 = '%02d'
