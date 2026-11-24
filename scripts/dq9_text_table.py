@@ -5,14 +5,12 @@ menu string files, the same in every release.
     0x04  u32 offset of the string pool
     0x08  u32 size of the string pool
     0x0C  u32 (varies)
-    0x10  records: u16 kind, u8 argument count, u8 flags, then the
-          arguments (u32 each); some are offsets into the pool
+    0x10  records: u16 kind, u8 argument count, the arguments' 2-bit
+          types (LSB first, one byte per four arguments, 0 a pool
+          offset, 1 an integer), padded with 0xFF to 4 bytes, then the
+          arguments (u32 each)
     pool  NUL-terminated strings (PAL: tagged ASCII; JP: Shift-JIS with
           the same control tags)
-
-Which arguments point into the pool depends on the record kind; callers
-find them by comparing two languages of one table (the arguments that
-differ are string offsets: `string_args`).
 """
 import struct
 
@@ -23,17 +21,30 @@ class Table:
         count, self.pool, self.pool_size, self.extra = struct.unpack_from("<IIII", data, 0)
         if self.pool > len(data) or self.pool < 16:
             raise ValueError("pool out of range")
-        self.records = []  # (kind, flags, [args])
+        self.records = []    # (kind, first type byte, [args])
+        self.types = []      # per record, each argument's type
+        self.positions = []  # per record, where its first argument is
         p = 16
         for _ in range(count):
             if p + 4 > self.pool:
                 raise ValueError("records run into the pool")
-            kind, argc, flags = struct.unpack_from("<HBB", data, p)
-            if p + 4 + 4 * argc > self.pool:
+            kind, argc = struct.unpack_from("<HB", data, p)
+            type_bytes = data[p + 3:p + 3 + (argc + 3) // 4]
+            head = 3 + max(1, len(type_bytes))
+            head += -head % 4
+            if p + head + 4 * argc > self.pool:
                 raise ValueError("record runs into the pool")
-            self.records.append((kind, flags, list(struct.unpack_from("<%dI" % argc, data, p + 4))))
-            p += 4 + 4 * argc
+            types = [(type_bytes[i // 4] >> (2 * (i % 4))) & 3 for i in range(argc)]
+            self.records.append((kind, data[p + 3],
+                                 list(struct.unpack_from("<%dI" % argc, data, p + head))))
+            self.types.append(types)
+            self.positions.append(p + head)
+            p += head + 4 * argc
         self.records_end = p
+
+    def string_args(self, i):
+        """The indices of record i's arguments that are pool offsets."""
+        return [k for k, t in enumerate(self.types[i]) if t == 0]
 
     def string(self, offset):
         start = self.pool + offset

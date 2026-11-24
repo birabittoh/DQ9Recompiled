@@ -240,11 +240,17 @@ def parse_any(data):
 
 def string_positions(tables):
     """Per (kind, argc): the argument indices that are string offsets,
-    from the PAL languages of one table."""
+    from the PAL languages of one table: the arguments typed as pool
+    offsets (a table whose only string is at offset 0 in every language
+    has no other sign of it), and those that differ between languages
+    (ttldata's offsets are typed as integers)."""
     en = tables["en"]
     out = collections.defaultdict(set)
     if isinstance(en, NatView) and en.nat.record_size == 8:
         out[(0, 2)].add(1)  # (id, string offset), even when every offset is 0
+    if not isinstance(en, NatView):
+        for i, (kind, _, args) in enumerate(en.records):
+            out[(kind, len(args))].update(en.string_args(i))
     for lang, t in tables.items():
         if lang == "en" or t is None:
             continue
