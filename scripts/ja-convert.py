@@ -453,11 +453,7 @@ class Text:
         """Where each record's first argument is."""
         if isinstance(en, jm.NatView):
             return [4 + i * en.nat.record_size for i in range(len(en.records))]
-        out, p = [], 16
-        for _, _, args in en.records:
-            out.append(p + 4)
-            p += 4 + 4 * len(args)
-        return out
+        return en.positions
 
 
 # ---------------------------------------------------------------------------
