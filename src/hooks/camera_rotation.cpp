@@ -15,7 +15,8 @@
 // way, with the rotation locked, unless the other one is held). Touching
 // both turn buttons at once holds L+R, which recenters the camera as on a
 // pad. The runner's fast-forward toggle shows at the top center whenever
-// the option is on.
+// the option is on. With it on, a touch on either screen (not on these
+// buttons) also stops an emote that loops until a face button.
 //
 // The pad's right stick is L and R too, everywhere in the game: left and
 // right hold L and R, pressing it holds both (which recenters the field
@@ -350,6 +351,34 @@ const NdsTouchButtonSpec kLand = {
     LandShown,
 };
 
+// Some emotes loop until A, B, X or Y is pressed (0x02053644, see the hook
+// in dq9_arm9.toml), which a touchscreen alone cannot do: with the extra
+// buttons on, a new touch on either screen stops them too. A press on an
+// extra button is neither (the frontend keeps it from the guest and from
+// the top screen's clicks), so the camera still turns meanwhile.
+//
+// The hero's emote: parts at +380 (1, one emote), phase at +382 (2, the
+// loop).
+bool HeroEmoteLooping() {
+    const uint8_t index = bus_read_u8(kCtx + 14716);
+    if (index >= 233) return false;
+    const uint32_t hero = bus_read_u32(kCtx + 8 + 4u * index);
+    return InMainRam(hero, 612) && bus_read_u8(hero + 380) == 1 &&
+           bus_read_u8(hero + 382) == 2;
+}
+
+unsigned TopClicks() {
+    int x = 0, y = 0;
+    return nds_title_top_click(&x, &y);
+}
+
+// The top screen's click count once stopping was last possible: only
+// clicks after it stop the emote. Emulation thread.
+unsigned g_top_clicks_seen = 0;
+
+// The touch manager: +85 a press began this frame.
+constexpr uint32_t kTouch = 0x02114E54u;
+
 // The right stick is L and R (nds_title_camera_stick), always.
 bool CameraStickActive() { return true; }
 
@@ -394,6 +423,8 @@ void SampleCameraButtons() {
                                  std::memory_order_relaxed);
     g_keys_at_swap.store(bus_read_u16(0x04000130), std::memory_order_relaxed);
     g_swaps.fetch_add(1, std::memory_order_relaxed);
+    // Top screen clicks from before the emote's loop do not stop it.
+    if (!HeroEmoteLooping()) g_top_clicks_seen = TopClicks();
 }
 
 }  // namespace dq9
@@ -402,4 +433,14 @@ void SampleCameraButtons() {
 // past the yaw clamp to the call that sets the yaw.
 NDS_TITLE_HOOK bool Dq9UnlockCameraRotation() {
     return nds_title_setting_value(kUnlockRotationId) != 0;
+}
+
+// At 0x02053AA4, the looping emote's key test on the hero: true takes the
+// press's path, which ends it.
+NDS_TITLE_HOOK bool Dq9TouchStopsEmote() {
+    const unsigned clicks = TopClicks();
+    const bool clicked = clicks != g_top_clicks_seen;
+    g_top_clicks_seen = clicks;
+    if (!nds_title_setting_value(kCameraButtonsId)) return false;
+    return clicked || bus_read_u8(kTouch + 85u) != 0;
 }

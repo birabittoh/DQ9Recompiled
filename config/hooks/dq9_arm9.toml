@@ -110,6 +110,22 @@ name = "Dq9UnlockCameraRotation"
 on_true = "jump"
 jump_address = 0x020A23DC # mov r0, r10 ; bl 0x0202E6B8 (set yaw)
 
+# A touch stops the hero's emote (with the extra buttons on). Handler:
+# src/hooks/camera_rotation.cpp.
+#
+# 0x02053644 runs an actor's emote (actor+0x17C parts, 0 for none;
+# +0x17E phase). In phase 2, the loop, a one-part emote on the hero ends
+# on a fresh A, B, X or Y (0xC03 on the pad at 0x02114E30), or once its
+# count at +0x184 runs out, so with a count of 0 it loops until a press.
+# The hook, on the hero only (the test before it), jumps to the press's
+# path on a new touch too.
+[[hook]]
+address = 0x02053AA4      # ldr r0, =0x02114E30 ; ldr r1, =0xC03 ; bl trigger
+mode = "arm"
+name = "Dq9TouchStopsEmote"
+on_true = "jump"
+jump_address = 0x02053AB8 # ldrsh r0, [r7, #4] ; mov r6, #1 (pressed)
+
 # Language (the Game > Language setting). Handler: src/hooks/language.cpp.
 #
 # The game reads the firmware language through OS_GetOwnerInfo (0x020C99D8,
