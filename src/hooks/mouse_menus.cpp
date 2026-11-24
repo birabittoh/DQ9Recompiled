@@ -493,7 +493,8 @@ NDS_TITLE_HOOK void Dq9MouseMenuEquipCategory(uint32_t* s) {
 //
 // A click on one of the party's names in the row at the bottom of the top
 // screen (the overworld) opens that member's equipment page, as choosing
-// Equipment and that member in the camp menu does: the camp menu calls the
+// Equipment and that member in the camp menu does (a member the camp menu does
+// not list there, see HasEquipmentPage, ignores the click): the camp menu calls the
 // field's 0x021A120C(field, 3, slot), which sets the page scene's kind and
 // member and queues it. The hook is on the entry of the field step
 // (0x0218CBD4(field)) and jumps to that function with r1 = 3, r2 = slot, so
@@ -563,6 +564,17 @@ int PartyCount() {
     return count > 4 ? 4 : count;
 }
 
+// Whether the member with this character id has an equipment page. The camp
+// menu lists for Equipment only the party members that 0x0200FE00(ctx, id)
+// finds (the u32 at ctx+8+4*id, with bit 0x800 of its first u16) and whose
+// u32 at +0x1C4 is 0 (overlay 2, 0x02155458); the others are left out.
+bool HasEquipmentPage(int id) {
+    if (id < 0 || id >= 0xE9) return false;
+    const uint32_t member = bus_read_u32(kCtxPartyEntity + 4u * static_cast<uint32_t>(id));
+    if (member == 0 || (bus_read_u16(member) & 0x800u) == 0) return false;
+    return bus_read_u32(member + 0x1C4u) == 0;
+}
+
 // Raises the tab under the mouse and lowers it once the mouse leaves, through
 // the tab's own state, so it moves (and shows the status) as when the camp
 // menu raises it. Only the tabs the hover raised are lowered by it; while a
@@ -628,7 +640,7 @@ NDS_TITLE_HOOK bool Dq9TopScreenClick(uint32_t* field, uint32_t* kind,
                            x < g_raised_x + kTabWidth && y >= g_raised_top;
     if (idle && (y >= kRowTop || on_raised) && x >= 0 && x / kTabWidth < count)
         hit = x / kTabWidth;
-    if (hit < 0) return false;
+    if (hit < 0 || !HasEquipmentPage(members[hit])) return false;
     *kind = 3u;
     *slot = static_cast<uint32_t>(members[hit]);
     return true;
