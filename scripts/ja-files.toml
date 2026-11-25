@@ -18,9 +18,13 @@
 "data/ani/bg_jrm.gp2::bg_jrm.pac" = "data/menu/bg_jr_ss_m.pac"
 "data/ani/bg_si.gp2::bg_si.pac" = "data/ani/bg_smi_info.pac"
 "data/ani/bgds.gp2::bgds.pac" = "data/ani/bg_damasub.pac"
-"data/ani/bgii20.gp2::bgii20.pac" = "data/ani/bg_ii2_0.pac"
-"data/ani/bgii21.gp2::bgii21.pac" = "data/ani/bg_ii2_1.pac"
-"data/ani/bgii22.gp2::bgii22.pac" = "data/ani/bg_ii2_2.pac"
+# The item info top screens: YDQJ's bg_ii2_* have another palette and
+# layout; YDQP's code draws the name, stars, values and vocation icons
+# with its own (brown on brown, misplaced). Their "Rarity" and "Used by:"
+# stay English.
+"data/ani/bgii20.gp2::bgii20.pac" = ""
+"data/ani/bgii21.gp2::bgii21.pac" = ""
+"data/ani/bgii22.gp2::bgii22.pac" = ""
 "data/ani/bglii20.gp2::bglii20.pac" = "data/ani/bgl_ii2_0.pac"
 "data/ani/bglii21.gp2::bglii21.pac" = "data/ani/bgl_ii2_1.pac"
 "data/ani/bglii22.gp2::bglii22.pac" = "data/ani/bgl_ii2_2.pac"
