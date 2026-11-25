@@ -63,6 +63,7 @@ freebios = true
 # english, french, german, italian or spanish (or "preserve" to keep the
 # firmware dump's own). Override per run with NDS_LANGUAGE or --language.
 language = "english"
+# check_for_updates = false  # skip the startup check for a newer release (--no-update-check)
 
 [controls]
 # Face buttons by position, as on a DS: the pad's bottom button is DS B and

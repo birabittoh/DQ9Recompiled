@@ -58,6 +58,10 @@ next to the executable if a `portable.txt` file is there:
 Logs go to `logs/` next to the executable. On macOS, or if that folder
 cannot be written, they go to `logs/` in the folder above.
 
+At startup the game checks GitHub for a newer release, offered on the title
+screen. To skip that, set `check_for_updates = false` under `[system]` in
+`settings.toml`, or launch with `--no-update-check`.
+
 ### Multiplayer
 
 On first launch Windows asks whether to let the game through its firewall;
