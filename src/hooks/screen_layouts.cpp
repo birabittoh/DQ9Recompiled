@@ -24,11 +24,13 @@
 // renderer, taller. The 2D stays at its size in the middle, the second screen in the window's bottom-left. The
 // full-screen pages, the title and the movies keep the DS's 4:3.
 //
-// In battle the commands screen is cut into the party's panels, stacked in
-// the bottom left in the party's order, without the wood around them: whole
+// In battle the commands screen is cut into the party's panels, in two
+// columns of two in the bottom corners, in the party's order (down the left
+// column, then the right), without the wood around them: whole
 // while someone chooses commands, only their names and HP/MP while the
-// actions play. A window across the panels (spells, items) keeps them in one
-// piece with it; a window with no panels (the results) goes at the top in
+// actions play. A submenu across the panels (spells, items) goes between the
+// columns on its own, the panels keeping what is left of it (one piece with
+// them when it covers their names too); a window with no panels (the results) goes at the top in
 // the middle. Only what is inside the panels' and windows' white frames is
 // drawn (OutsideFrames).
 //
@@ -267,6 +269,12 @@ struct BattleHud {
     bool across = false;    // a window across the panels (spells, items)
     bool windows = false;   // any window open
     int win_x0 = 0, win_y0 = 0, win_x1 = 0, win_y1 = 0;  // their bounds
+    bool panel_tall[4]{};
+    // With a window across the panels, the submenu: the windows reaching as
+    // far right as the across ones (its list and its description).
+    int sub_x0 = 0, sub_y0 = 0, sub_x1 = 0, sub_y1 = 0;
+    int subs = 0;
+    int sub_rect[7][4]{};  // its windows: x0, y0, x1, y1
 };
 
 std::mutex g_hud_mutex;
@@ -302,9 +310,16 @@ BattleHud ReadBattleHud() {
         hud.panel_x[hud.panels] = x;
         hud.panel_y[hud.panels] = y;
         hud.panel_h[hud.panels] = h;
+        hud.panel_tall[hud.panels] = tall;
         hud.tall = hud.tall || tall;
         ++hud.panels;
     }
+    struct Rect {
+        int x0, y0, x1, y1;
+        bool across;
+    };
+    Rect rects[7]{};
+    int opened = 0;
     for (uint32_t i = 0; i < 7; ++i) {
         const uint32_t window = m + 644 + 224 * i;
         if ((bus_read_u8(window + 197) & 1) == 0) continue;
@@ -332,18 +347,45 @@ BattleHud ReadBattleHud() {
         }
         hud.windows = true;
         hud.across = hud.across || !inside;
+        rects[opened++] = {x, y, x + w, y + h, !inside};
+    }
+    if (hud.across) {
+        // Its windows reach as far right as the across ones (the spells' or
+        // items' list starts left of the description, the items' at 112);
+        // the commands window under them stops short (at 136 or 208).
+        int right = 0;
+        for (int i = 0; i < opened; ++i)
+            if (rects[i].across) right = std::max(right, rects[i].x1);
+        bool first = true;
+        for (int i = 0; i < opened; ++i) {
+            const Rect& r = rects[i];
+            if (r.x1 < right - 8) continue;
+            hud.sub_x0 = first ? r.x0 : std::min(hud.sub_x0, r.x0);
+            hud.sub_y0 = first ? r.y0 : std::min(hud.sub_y0, r.y0);
+            hud.sub_x1 = first ? r.x1 : std::max(hud.sub_x1, r.x1);
+            hud.sub_y1 = first ? r.y1 : std::max(hud.sub_y1, r.y1);
+            first = false;
+            int* out = hud.sub_rect[hud.subs++];
+            out[0] = r.x0;
+            out[1] = r.y0;
+            out[2] = r.x1;
+            out[3] = r.y1;
+        }
     }
     hud.valid = hud.panels > 0 || hud.windows;
     return hud;
 }
 
-// Pieces in the main screen's pixels: half size, stacked up from its bottom
-// left (of a widened or taller view too), a 2-pixel gap under each.
+// Pieces in the main screen's pixels: half size, from its bottom left (of a
+// widened or taller view too), a 2-pixel gap under and beside each.
 constexpr float kHalf = 0.5f;
 constexpr float kGap = 2.0f;
 constexpr float kLeft = 2.0f;
 // A party of one stands a panel higher, easier to see.
 constexpr float kAloneRaise = 40 * kHalf + kGap;
+// A submenu starting left of this covers the panels' names: kept whole with
+// them.
+constexpr int kMinSubmenuX = 64;
 
 int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
     int n = 0;
@@ -364,9 +406,9 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         return n;
     }
     const float raise = hud.panels == 1 ? kAloneRaise : 0.0f;
-    if (hud.across) {
-        // A window across the panels: all of it in one piece, so its
-        // windows stay whole.
+    if (hud.across && hud.sub_x0 < kMinSubmenuX) {
+        // A window across the panels that covers their names too: all of
+        // it in one piece, so its windows stay whole.
         int top = hud.panel_y[0], bottom = hud.panel_y[0] + hud.panel_h[0];
         for (int i = 1; i < hud.panels; ++i) {
             top = std::min(top, hud.panel_y[i]);
@@ -379,25 +421,69 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
             float(nds_title_wide_height()) - h * kHalf - kGap - raise, kHalf);
         return n;
     }
-    float total = raise;
-    for (int i = 0; i < hud.panels; ++i)
-        total += hud.panel_h[i] * kHalf + kGap;
-    float y = float(nds_title_wide_height()) - total;
-    for (int i = 0; i < hud.panels; ++i) {
-        const float sx = float(hud.panel_x[i]);
-        const float sy = float(hud.panel_y[i]);
-        const float sh = float(hud.panel_h[i]);
-        // Whole rows: OutsideFrames leaves only what is inside the frames.
-        if (hud.tall) {
-            // Choosing commands: the whole panels.
-            add(sx, sy, 256, sh, kLeft, y, kHalf);
-        } else {
-            // The actions: each panel's name and HP/MP, then its right
-            // edge.
-            add(sx, sy, 119, sh, kLeft, y, kHalf);
-            add(sx + 241, sy, 15, sh, kLeft + 119 * kHalf, y, kHalf);
+    // Two columns of up to two panels each, one in each bottom corner, the
+    // party's order down the left column then the right, each column
+    // standing on the bottom edge.
+    // A submenu (spells, items) is cut out on its own, between the columns,
+    // and the panels it covered keep only what is left of it: the chooser's
+    // name and commands, the others' names and HP/MP.
+    const bool submenu = hud.across;
+    const auto panel_w = [&](int i) {
+        if (!submenu) return hud.tall ? 256 : 119 + 15;
+        // Up to the submenu's windows beside it (the items' list reaches
+        // further left than its description).
+        int cut = 256;
+        for (int s = 0; s < hud.subs; ++s)
+            if (hud.sub_rect[s][1] < hud.panel_y[i] + hud.panel_h[i] &&
+                hud.sub_rect[s][3] > hud.panel_y[i])
+                cut = std::min(cut, hud.sub_rect[s][0]);
+        return hud.panel_tall[i] ? cut : std::min(cut, 119);
+    };
+    for (int column = 0; column * 2 < hud.panels; ++column) {
+        const int first = column * 2;
+        const int last = std::min(first + 2, hud.panels);
+        float total = raise;
+        int widest = 0;
+        for (int i = first; i < last; ++i) {
+            total += hud.panel_h[i] * kHalf + kGap;
+            widest = std::max(widest, panel_w(i));
         }
-        y += sh * kHalf + kGap;
+        float y = float(nds_title_wide_height()) - total;
+        const float dx = column == 0
+            ? kLeft
+            : float(nds_title_wide_width()) - kLeft - widest * kHalf;
+        for (int i = first; i < last; ++i) {
+            const float sx = float(hud.panel_x[i]);
+            const float sy = float(hud.panel_y[i]);
+            const float sh = float(hud.panel_h[i]);
+            // Whole rows: OutsideFrames leaves only what is inside the frames.
+            if (submenu) {
+                add(sx, sy, float(panel_w(i)), sh, dx, y, kHalf);
+            } else if (hud.tall) {
+                // Choosing commands: the whole panels.
+                add(sx, sy, 256, sh, dx, y, kHalf);
+            } else {
+                // The actions: each panel's name and HP/MP, then its right
+                // edge.
+                add(sx, sy, 119, sh, dx, y, kHalf);
+                add(sx + 241, sy, 15, sh, dx + 119 * kHalf, y, kHalf);
+            }
+            y += sh * kHalf + kGap;
+        }
+    }
+    if (submenu) {
+        // Window by window, as they stand together: what is between them
+        // and their bounds (the panels' edges) stays with the panels.
+        const float w = float(hud.sub_x1 - hud.sub_x0);
+        const float h = float(hud.sub_y1 - hud.sub_y0);
+        const float x = (nds_title_wide_width() - w * kHalf) / 2;
+        const float top = float(nds_title_wide_height()) - h * kHalf - kGap;
+        for (int s = 0; s < hud.subs; ++s) {
+            const int* r = hud.sub_rect[s];
+            add(float(r[0]), float(r[1]), float(r[2] - r[0]),
+                float(r[3] - r[1]), x + (r[0] - hud.sub_x0) * kHalf,
+                top + (r[1] - hud.sub_y0) * kHalf, kHalf);
+        }
     }
     return n;
 }
