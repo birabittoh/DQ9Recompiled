@@ -130,13 +130,87 @@ void SeeThrough(const uint32_t* pixels, int width, uint32_t* out,
 }
 
 // The battle's panels and windows are each framed by a near-white line
-// (grey while dimmed behind a submenu); the wood and the panels' surround
-// outside those frames are not drawn. Everything reachable from the
-// screen's edges without crossing a frame pixel gets alpha 0.
+// (grey while dimmed behind a submenu) around a dark fill; the wood and the
+// panels' surround outside them are not drawn. Everything reachable from the
+// screen's edges without crossing a frame or a fill pixel gets alpha 0. The
+// fill stops it too: the frames have gaps (at their rounded corners) that let
+// it into the boxes, which then lost their fill.
 bool FramePixel(uint32_t rgb) {
     const uint32_t r = rgb >> 16 & 0xFFu, g = rgb >> 8 & 0xFFu, b = rgb & 0xFFu;
     const uint32_t low = std::min({r, g, b}), high = std::max({r, g, b});
     return low >= 140 && high - low <= 40;
+}
+
+// The boxes' dark fill (and the letters' shadows), darker than any of the
+// wood, gold or light green around them.
+bool FillPixel(uint32_t rgb) {
+    const uint32_t r = rgb >> 16 & 0xFFu, g = rgb >> 8 & 0xFFu, b = rgb & 0xFFu;
+    return std::max({r, g, b}) <= 96;
+}
+
+// The holes in the letters (b, B, A, 6...) are closed off by the white
+// strokes, so the flood never reaches them even when it clears all around
+// them: they stayed as dark specks. A small region the flood missed takes
+// what is just across its strokes: cleared when most of that was. `seen` is
+// the flood's (1: cleared); this marks the regions it looks at with 2.
+void ClearedHoles(const uint32_t* pixels, int width, uint32_t* out,
+                  std::vector<uint8_t>& seen) {
+    constexpr size_t kMaxHole = 24;  // pixels: a letter's hole, not a box
+    const int count = width * 192;
+    static std::vector<int> hole, stack;
+    const auto frame = [&](int i) { return FramePixel(pixels[i] & 0xFFFFFFu); };
+    const auto neighbours = [&](int i, auto&& visit) {
+        const int x = i % width;
+        if (x > 0) visit(i - 1);
+        if (x + 1 < width) visit(i + 1);
+        if (i >= width) visit(i - width);
+        if (i + width < count) visit(i + width);
+    };
+    for (int start = 0; start < count; ++start) {
+        if (seen[size_t(start)] || frame(start)) continue;
+        // The region: the pixels the flood missed, joined to this one.
+        hole.clear();
+        stack.assign(1, start);
+        seen[size_t(start)] = 2;
+        bool small = true;
+        while (!stack.empty()) {
+            const int i = stack.back();
+            stack.pop_back();
+            if (hole.size() < kMaxHole + 1) hole.push_back(i);
+            else small = false;
+            neighbours(i, [&](int j) {
+                if (seen[size_t(j)] || frame(j)) return;
+                seen[size_t(j)] = 2;
+                stack.push_back(j);
+            });
+        }
+        if (!small || hole.size() > kMaxHole) continue;
+        // Across its strokes: straight out from each of its pixels, past up
+        // to 3 frame pixels, to the first pixel that is not one.
+        int cleared = 0, kept = 0;
+        constexpr int kDx[] = {-1, 1, 0, 0}, kDy[] = {0, 0, -1, 1};
+        for (const int i : hole) {
+            for (int d = 0; d < 4; ++d) {
+                int x = i % width, y = i / width, steps = 0;
+                do {
+                    x += kDx[d];
+                    y += kDy[d];
+                    ++steps;
+                } while (x >= 0 && x < width && y >= 0 && y < 192 &&
+                         steps <= 3 && frame(y * width + x));
+                if (steps == 1 || steps > 3 || x < 0 || x >= width || y < 0 ||
+                    y >= 192)
+                    continue;  // inside the region, or no stroke out there
+                const int across = y * width + x;
+                if (seen[size_t(across)] == 1) ++cleared;
+                else if (std::find(hole.begin(), hole.end(), across) ==
+                         hole.end())
+                    ++kept;
+            }
+        }
+        if (cleared > kept)
+            for (const int i : hole) out[i] &= 0x00FFFFFFu;
+    }
 }
 
 void OutsideFrames(const uint32_t* pixels, int width, uint32_t* out) {
@@ -146,7 +220,8 @@ void OutsideFrames(const uint32_t* pixels, int width, uint32_t* out) {
     seen.assign(size_t(count), 0);
     stack.clear();
     const auto push = [&](int i) {
-        if (seen[size_t(i)] || FramePixel(pixels[i] & 0xFFFFFFu)) return;
+        const uint32_t rgb = pixels[i] & 0xFFFFFFu;
+        if (seen[size_t(i)] || FramePixel(rgb) || FillPixel(rgb)) return;
         seen[size_t(i)] = 1;
         stack.push_back(i);
     };
@@ -168,6 +243,7 @@ void OutsideFrames(const uint32_t* pixels, int width, uint32_t* out) {
         if (i >= width) push(i - width);
         if (i + width < count) push(i + width);
     }
+    ClearedHoles(pixels, width, out, seen);
 }
 
 // The battle's panels and windows on the commands screen, read at the swap
