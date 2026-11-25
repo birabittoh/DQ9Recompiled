@@ -390,9 +390,14 @@ NDS_TITLE_HOOK void Dq9WindowLayers() {
     // The field walk's stick (no 2D window up, or the treasure search's
     // HUD): on a widened view it can be pressed anywhere, not only on the
     // native screen.
-    nds_title_set_touch_stick(InGame() && dq9::FieldLoaded() &&
-                              !dq9::InBattle() &&
-                              (!Window2dShown() || dq9::TreasureSearch()));
+    const bool stick = InGame() && dq9::FieldLoaded() && !dq9::InBattle() &&
+                       (!Window2dShown() || dq9::TreasureSearch());
+    nds_title_set_touch_stick(stick);
+    // With a 2D window up (the camp menu, a message box) a tap beyond the
+    // DS screen counts as one at its nearest edge, so "tap outside the
+    // window to close it" works over the whole wide view.
+    nds_title_set_touch_outside(InGame() && dq9::FieldLoaded() &&
+                                !dq9::InBattle() && !stick);
     if (scale >= 1.0 || !InGame()) {
         nds_gpu2d_set_fixed_size_layers(0, 1.0f, 0, 0);
         nds_title_set_unscaled_touch_rect(0, 0, 0, 0);
