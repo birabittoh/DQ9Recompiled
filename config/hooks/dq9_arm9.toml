@@ -257,15 +257,23 @@ name = "Dq9WindowLayers"
 # head no longer covers, so the arrow still runs from the press point to
 # the pen. Handler: src/hooks/text_box_size.cpp.
 #
-# On a widened view a press beside the DS screen is taken inside it, and the
-# drag follows by the same offset: the arrow's two points (r1, r2 = x0, y0;
-# r3, [sp + 0xA0] = x1, y1, after the prologue) are moved back by it, so it
-# is drawn under the pointer, in the view's wide part.
+# On a widened view a press beside the DS screen is taken inside it, and a
+# drag that would leave the screen is shortened (same direction): the
+# arrow's two points (r1, r2 = x0, y0; r3, [sp + 0xA0] = x1, y1, after the
+# prologue) become the pointer's own, so it is drawn under the pointer, in
+# the view's wide part too. The length 0x020968E0 measured from the stored
+# points ([sp], r7 = 0 unless the stub) becomes theirs at the join.
 [[hook]]
 address = 0x02096C50      # mov r6, r0 (after push {r4-r8, lr} ; sub sp, #0x88)
 mode = "arm"
 name = "Dq9StylusArrowPoints"
 registers = ["r1", "r2", "r3", "sp"]
+
+[[hook]]
+address = 0x02096D88      # cmp r7, #0 (after the length, or the stub's)
+mode = "arm"
+name = "Dq9StylusArrowTrueLength"
+registers = ["r7", "sp"]
 
 [[hook]]
 address = 0x02096E18      # sub r0, r3, #0x8000 (ring: after its push)

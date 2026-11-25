@@ -17,6 +17,7 @@
 //     engine, in a pixel-space pass (field and battle).
 //   * 2D: the message manager in 2D mode and the camp menu draw into the
 //     main engine's text BGs.
+#include <cmath>
 #include <cstdint>
 
 #include "chat_overlay.h"
@@ -274,21 +275,35 @@ NDS_TITLE_HOOK void Dq9StylusArrowPiece() {
     bus_write_u32(kMtxScale, static_cast<uint32_t>(kOne));
 }
 
-// The arrow's points (pixels; y1 is the stacked fifth argument): moved back
-// by what the frontend carried the press by, so a press beside the DS screen
-// on a widened view shows its arrow under the pointer. The direction and the
-// length are unchanged.
+namespace {
+// The arrow's length (fx32) from the pointer's own points, for the draw
+// under way; 0 when it keeps the game's.
+int32_t g_arrow_length = 0;
+}  // namespace
+
+// The arrow's points (pixels; y1 is the stacked fifth argument). On a
+// widened view the frontend carries a press beside the DS screen inside it
+// and shortens a drag that would leave it (same direction): the arrow is
+// drawn between the pointer's own points instead, under the pointer.
 NDS_TITLE_HOOK void Dq9StylusArrowPoints(uint32_t* x0, uint32_t* y0,
                                          uint32_t* x1, uint32_t* sp) {
-    int dx = 0, dy = 0;
-    nds_title_touch_stick_offset(&dx, &dy);
-    if (dx == 0 && dy == 0) return;
-    const uint32_t y1_at = *sp + 0xA0;
-    *x0 = static_cast<uint32_t>(static_cast<int32_t>(*x0) - dx);
-    *y0 = static_cast<uint32_t>(static_cast<int32_t>(*y0) - dy);
-    *x1 = static_cast<uint32_t>(static_cast<int32_t>(*x1) - dx);
-    bus_write_u32(y1_at, static_cast<uint32_t>(
-                             static_cast<int32_t>(bus_read_u32(y1_at)) - dy));
+    g_arrow_length = 0;
+    int px = 0, py = 0, qx = 0, qy = 0;
+    if (!nds_title_touch_stick_points(&px, &py, &qx, &qy)) return;
+    *x0 = static_cast<uint32_t>(px);
+    *y0 = static_cast<uint32_t>(py);
+    *x1 = static_cast<uint32_t>(qx);
+    bus_write_u32(*sp + 0xA0, static_cast<uint32_t>(qy));
+    g_arrow_length = static_cast<int32_t>(
+        std::lround(std::hypot(double(qx - px), double(qy - py)) * kOne));
+}
+
+// The length the game measured (at [sp], fx32) is from its own points, kept
+// on the screen: the pointer's, unless the arrow is the dead zone's stub
+// (r7 != 0).
+NDS_TITLE_HOOK void Dq9StylusArrowTrueLength(uint32_t* stub, uint32_t* sp) {
+    if (*stub != 0 || g_arrow_length <= 0) return;
+    bus_write_u32(*sp, static_cast<uint32_t>(g_arrow_length));
 }
 
 // The shaft: thinner only, its length still reaches the head.
