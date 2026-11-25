@@ -18,6 +18,12 @@
 // see-through, its white frames and letters solid. Elsewhere (the title, the
 // pages that move the 3D to the top LCD) the second screen stays beside.
 //
+// With Over, the battle and the overworld (the camp menu too, drawn over
+// the field) also fill the window at any shape: the main screen widens to
+// it (title_settings.h, nds_title_set_wide_query): wider or, with the HD
+// renderer, taller. The 2D stays at its size in the middle, the second screen in the window's bottom-left. The
+// full-screen pages, the title and the movies keep the DS's 4:3.
+//
 // In battle the commands screen is cut into the party's panels, stacked in
 // the bottom left in the party's order, without the wood around them: whole
 // while someone chooses commands, only their names and HP/MP while the
@@ -63,6 +69,11 @@ std::atomic<bool> g_battle_at_swap{false};
 // (overlay slots, BG and blend registers) can match a battle's effects for a
 // frame, which flipped the layout back and forth: a battle is never one.
 std::atomic<bool> g_over_at_swap{false};
+// The battle or the field, not a full-screen page: the scenes the main
+// screen widens in. Debounced: each change resizes the 3D, and a test that
+// matches for a frame or two would flicker.
+std::atomic<bool> g_wide_at_swap{false};
+constexpr int kWideSettleSwaps = 6;
 
 // Called once per presented frame on the frontend thread. The movie is read
 // here, not at the swap: it may draw no 3D, so no swap would see it.
@@ -327,7 +338,7 @@ BattleHud ReadBattleHud() {
 }
 
 // Pieces in the main screen's pixels: half size, stacked up from its bottom
-// left, a 2-pixel gap under each.
+// left (of a widened or taller view too), a 2-pixel gap under each.
 constexpr float kHalf = 0.5f;
 constexpr float kGap = 2.0f;
 constexpr float kLeft = 2.0f;
@@ -348,7 +359,8 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         const float w = float(std::min(hud.win_x1 + 3, 256)) - x0;
         const float h = float(std::min(hud.win_y1 + 3, 192)) - y0;
         const float scale = std::min({1.0f, 200.0f / w, 110.0f / h});
-        add(x0, y0, w, h, (256 - w * scale) / 2, 6, scale);
+        add(x0, y0, w, h, (nds_title_wide_width() - w * scale) / 2, 6,
+            scale);
         return n;
     }
     const float raise = hud.panels == 1 ? kAloneRaise : 0.0f;
@@ -363,14 +375,14 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         top = std::min(top, hud.win_y0);
         bottom = std::max(bottom, hud.win_y1);
         const float h = float(bottom - top);
-        add(0, float(top), 256, h, kLeft, 192 - h * kHalf - kGap - raise,
-            kHalf);
+        add(0, float(top), 256, h, kLeft,
+            float(nds_title_wide_height()) - h * kHalf - kGap - raise, kHalf);
         return n;
     }
     float total = raise;
     for (int i = 0; i < hud.panels; ++i)
         total += hud.panel_h[i] * kHalf + kGap;
-    float y = 192 - total;
+    float y = float(nds_title_wide_height()) - total;
     for (int i = 0; i < hud.panels; ++i) {
         const float sx = float(hud.panel_x[i]);
         const float sy = float(hud.panel_y[i]);
@@ -416,7 +428,15 @@ int InsetOverlay(int screen, const uint32_t* pixels, int width,
     return 100;
 }
 
+// Called once per presented frame on the frontend thread.
+bool Wide() {
+    return nds_title_setting_value(kSecondScreenOverId) == kOver &&
+           g_wide_at_swap.load(std::memory_order_relaxed) &&
+           !dq9::MoviePlaying();
+}
+
 const bool kRegistered = (nds_title_set_stacked_layout_query(Wanted),
+                          nds_title_set_wide_query(Wide),
                           nds_title_set_stacked_gap_query(StackedGap),
                           nds_title_set_inset_below_query(InsetBelow),
                           nds_title_set_inset_overlay_query(InsetOverlay),
@@ -430,8 +450,17 @@ void SampleScreenLayout() {
     g_title_at_swap.store(TitleScreen(), std::memory_order_relaxed);
     const bool battle = InBattle();
     g_battle_at_swap.store(battle, std::memory_order_relaxed);
-    g_over_at_swap.store(GameModeRunning() && (battle || !FullScreenPage()),
-                         std::memory_order_relaxed);
+    const bool running = GameModeRunning();
+    const bool page = !battle && FullScreenPage();
+    g_over_at_swap.store(running && !page, std::memory_order_relaxed);
+    const bool wide = running && !page && (battle || FieldLoaded());
+    static int changed_swaps = 0;
+    if (wide == g_wide_at_swap.load(std::memory_order_relaxed)) {
+        changed_swaps = 0;
+    } else if (++changed_swaps >= kWideSettleSwaps) {
+        changed_swaps = 0;
+        g_wide_at_swap.store(wide, std::memory_order_relaxed);
+    }
     const BattleHud hud = battle ? ReadBattleHud() : BattleHud{};
     std::lock_guard<std::mutex> lock(g_hud_mutex);
     g_hud = hud;
