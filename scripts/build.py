@@ -583,6 +583,7 @@ def main():
             # The hooks' text, which the runner build would generate.
             run([sys.executable, os.path.join("scripts", "gen-lang.py")])
             run([sys.executable, os.path.join("scripts", "gen-map-names.py")])
+            write_ja_plan_inc()
             return
     elif not os.path.isdir(os.path.join("generated", "recomp")):
         die("generated/recomp missing: run without --runner-only first")
