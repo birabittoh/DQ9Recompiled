@@ -148,17 +148,26 @@ void SeeThrough(const uint32_t* pixels, int width, uint32_t* out,
 // screen's edges without crossing a frame or a fill pixel gets alpha 0. The
 // fill stops it too: the frames have gaps (at their rounded corners) that let
 // it into the boxes, which then lost their fill.
+//
+// A fade to black multiplies every colour, so the thresholds follow the
+// screen's brightest channel (the frames' white, 248, when not faded): the
+// faded wood, darker than the fill's unfaded limit, still gets cleared.
+constexpr uint32_t kWhite = 248;
+uint32_t g_peak = kWhite;
+
+uint32_t Level(uint32_t value) { return value * g_peak / kWhite; }
+
 bool FramePixel(uint32_t rgb) {
     const uint32_t r = rgb >> 16 & 0xFFu, g = rgb >> 8 & 0xFFu, b = rgb & 0xFFu;
     const uint32_t low = std::min({r, g, b}), high = std::max({r, g, b});
-    return low >= 140 && high - low <= 40;
+    return low >= Level(140) && high - low <= Level(40);
 }
 
 // The boxes' dark fill (and the letters' shadows), darker than any of the
 // wood, gold or light green around them.
 bool FillPixel(uint32_t rgb) {
     const uint32_t r = rgb >> 16 & 0xFFu, g = rgb >> 8 & 0xFFu, b = rgb & 0xFFu;
-    return std::max({r, g, b}) <= 96;
+    return std::max({r, g, b}) <= Level(96);
 }
 
 // The holes in the letters (b, B, A, 6...) are closed off by the white
@@ -228,6 +237,19 @@ void ClearedHoles(const uint32_t* pixels, int width, uint32_t* out,
 
 void OutsideFrames(const uint32_t* pixels, int width, uint32_t* out) {
     const int count = width * 192;
+    uint32_t peak = 0;
+    for (int i = 0; i < count; ++i) {
+        const uint32_t rgb = pixels[i];
+        peak = std::max({peak, rgb >> 16 & 0xFFu, rgb >> 8 & 0xFFu,
+                         rgb & 0xFFu});
+    }
+    // Faded nearly to black: nothing left to show.
+    constexpr uint32_t kDarkPeak = 32;
+    if (peak < kDarkPeak) {
+        for (int i = 0; i < count; ++i) out[i] &= 0x00FFFFFFu;
+        return;
+    }
+    g_peak = std::min(peak, kWhite);
     static std::vector<uint8_t> seen;
     static std::vector<int> stack;
     seen.assign(size_t(count), 0);
