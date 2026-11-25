@@ -6,7 +6,7 @@ Static recompilation of **Dragon Quest IX: Sentinels of the Starry Skies**
 
 **You must own the game.** This project does **not** ship any copyrighted code,
 data, or assets: no ROM, BIOS, firmware or generated code. You provide your own
-dump of either the USA or PAL copy of the game.
+dump of the USA, PAL or JP (`YDQJ`, experimental) copy of the game.
 
 The game runs as compiled code from its first instruction, with no interpreter,
 on a recompiled FreeBIOS and a generated firmware.
@@ -20,13 +20,21 @@ Feel free to visit DQ9Recompiled's [official Discord server](https://discord.gg/
 * **Unlocked camera rotation**: you can now rotate it freely.
 * **UI size**: optimized text boxes and menus for big windows.
 * **Language**: switch between English, French, German, Italian and Spanish
-  without a restart.
+  without a restart. Japanese is available only when playing a JP ROM.
+* **Any resolution**: 3D renders at any resolution, including ultrawide.
+* **2nd screen position**: pieces of the secondary screen are drawn on top of
+  the primary one during exploration and battles.
 * **Mouse-friendly menus**: hover to highlight, one click to choose.
 * **60 FPS mode**: Off, Fast or Accurate.
 * **Analog movement**: the left stick walks at any angle.
 * **Skip text**: press B, the right mouse button or double tap to print instantly.
+* **Remappable keyboard**: every keyboard button can be remapped.
+* **Touch buttons**: additional touch buttons with adjustable opacity.
+* **Virtual stylus**: use the touch screen from a controller.
+* **Local DLC**: Sellma's shop and DLC quests work without any external service.
 * **Options**: every option is displayed natively in-game.
-* **Multiplayer**: local wireless over the LAN, and online lobbies with Netplay.
+* **Multiplayer**: local wireless over the LAN, and online lobbies with Netplay,
+  through the relay or, with "Online (alt)", direct STUN connections.
 
 ## Play
 
@@ -35,7 +43,8 @@ Feel free to visit DQ9Recompiled's [official Discord server](https://discord.gg/
 ```
 
 On first launch it asks for your ROM and unpacks it into `assets/<code>` in the
-data folder; your `.nds` can then be moved or deleted.
+data folder; your `.nds` can then be moved or deleted. You can also drag a ROM
+over the executable to extract it.
 
 Settings, saves and the unpacked ROM live in a per-user folder, or
 next to the executable if a `portable.txt` file is there:
