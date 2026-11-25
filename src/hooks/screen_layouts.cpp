@@ -406,9 +406,13 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         return n;
     }
     const float raise = hud.panels == 1 ? kAloneRaise : 0.0f;
-    if (hud.across && hud.sub_x0 < kMinSubmenuX) {
-        // A window across the panels that covers their names too: all of
-        // it in one piece, so its windows stay whole.
+    // A submenu opens only while someone chooses commands; during the
+    // actions a window outside the panels is the action's line (below a
+    // party of one's panel).
+    const bool submenu = hud.across && hud.tall && hud.sub_x0 >= kMinSubmenuX;
+    if (hud.across && !submenu) {
+        // A window across the panels that is not a submenu, or covers their
+        // names too: all of it in one piece, so its windows stay whole.
         int top = hud.panel_y[0], bottom = hud.panel_y[0] + hud.panel_h[0];
         for (int i = 1; i < hud.panels; ++i) {
             top = std::min(top, hud.panel_y[i]);
@@ -427,7 +431,6 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
     // A submenu (spells, items) is cut out on its own, between the columns,
     // and the panels it covered keep only what is left of it: the chooser's
     // name and commands, the others' names and HP/MP.
-    const bool submenu = hud.across;
     const auto panel_w = [&](int i) {
         if (!submenu) return hud.tall ? 256 : 119 + 15;
         // Up to the submenu's windows beside it (the items' list reaches
