@@ -240,6 +240,9 @@ const NdsTouchButtonSpec kTurnLeft = {
     NdsTouchButtonPlace::LeftMiddle,
     kKeyL,
     TurnLeftShown,
+    false,
+    nullptr,
+    kKeyL | kKeyR,  // right click: L+R, recenters the camera
 };
 
 const NdsTouchButtonSpec kTurnRight = {
@@ -257,6 +260,9 @@ const NdsTouchButtonSpec kTurnRight = {
     NdsTouchButtonPlace::RightMiddle,
     kKeyR,
     TurnRightShown,
+    false,
+    nullptr,
+    kKeyL | kKeyR,  // right click: L+R, recenters the camera
 };
 
 // Holding B in the field (0x02199F08 starts the emote mode) brings up the
