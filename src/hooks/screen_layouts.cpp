@@ -11,7 +11,7 @@
 // In battle the second screen stays below the main one in a portrait window,
 // where the overworld and the other scenes put it above.
 //
-// Display > 2nd screen position: Over draws the second screen over the main
+// Display > 2nd screen pos.: Over draws the second screen over the main
 // one instead, see-through, in its bottom-left corner: in the field the map
 // (the top LCD) at a third of the main screen's size, in battle the commands
 // and the party (the bottom LCD) at half its size, over the 3D. Its fill is
@@ -88,7 +88,7 @@ constexpr int kPlaceValues[] = {kBeside, kOver};
 
 constexpr NdsTitleSetting kSecondScreenOver = {
     "second_screen_over",
-    "2nd screen position",
+    "2nd screen pos.",
     "Over draws the other screen see-through in a corner: the map in the "
     "field, the commands in battle.",
     0, 1, 1,
