@@ -274,6 +274,23 @@ NDS_TITLE_HOOK void Dq9StylusArrowPiece() {
     bus_write_u32(kMtxScale, static_cast<uint32_t>(kOne));
 }
 
+// The arrow's points (pixels; y1 is the stacked fifth argument): moved back
+// by what the frontend carried the press by, so a press beside the DS screen
+// on a widened view shows its arrow under the pointer. The direction and the
+// length are unchanged.
+NDS_TITLE_HOOK void Dq9StylusArrowPoints(uint32_t* x0, uint32_t* y0,
+                                         uint32_t* x1, uint32_t* sp) {
+    int dx = 0, dy = 0;
+    nds_title_touch_stick_offset(&dx, &dy);
+    if (dx == 0 && dy == 0) return;
+    const uint32_t y1_at = *sp + 0xA0;
+    *x0 = static_cast<uint32_t>(static_cast<int32_t>(*x0) - dx);
+    *y0 = static_cast<uint32_t>(static_cast<int32_t>(*y0) - dy);
+    *x1 = static_cast<uint32_t>(static_cast<int32_t>(*x1) - dx);
+    bus_write_u32(y1_at, static_cast<uint32_t>(
+                             static_cast<int32_t>(bus_read_u32(y1_at)) - dy));
+}
+
 // The shaft: thinner only, its length still reaches the head.
 NDS_TITLE_HOOK void Dq9StylusArrowShaft() {
     const int32_t k = TextBoxScale();
@@ -355,6 +372,12 @@ NDS_TITLE_HOOK void Dq9WindowLayers() {
     g_choice_drawn = false;
     const double scale = UiScale();
     const int32_t choice_scale = TextBoxScale();
+    // The field walk's stick (no 2D window up, or the treasure search's
+    // HUD): on a widened view it can be pressed anywhere, not only on the
+    // native screen.
+    nds_title_set_touch_stick(InGame() && dq9::FieldLoaded() &&
+                              !dq9::InBattle() &&
+                              (!Window2dShown() || dq9::TreasureSearch()));
     if (scale >= 1.0 || !InGame()) {
         nds_gpu2d_set_fixed_size_layers(0, 1.0f, 0, 0);
         nds_title_set_unscaled_touch_rect(0, 0, 0, 0);
