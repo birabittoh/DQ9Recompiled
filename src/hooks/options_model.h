@@ -94,6 +94,9 @@ inline bool Hidden(const NdsTitleMenuRow& row) {
     if (row.section == "System") return true;
     // The game has its own volume settings.
     if (row.key == "audio.volume") return true;
+    // The Japanese release has its text in Japanese only (every language's
+    // files hold it).
+    if (row.key == "title.language" && dq9::TextLanguage() == 6u) return true;
     // The Netplay choice is always shown (its description says whether the
     // lobby server is up); the account row only while a sign-in is wanted or
     // held, which `enabled` tells.

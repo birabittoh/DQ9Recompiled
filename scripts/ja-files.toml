@@ -100,6 +100,9 @@
 "data/prm/iteminfo.gp2::itemexpl.nat" = "data/prm/iteminfo.gp2::itemsetumei.nat"
 "data/prm/iteminfo.gp2::itm_mob.nat" = "data/prm/iteminfo.gp2::itemmobname.nat"
 "data/prm/itemsort.gp2::itemsort.bin" = "data/prm/itemsortdata.bin"
+# Names of the legacy equipment and the rewards (by item id): YDQJ's
+# item names.
+"data/prm/item_tmn.gp2::item_tmn.nat" = "data/prm/itemname.nat"
 "data/prm/mon_data.gp2::mon_data.nat" = "data/prm/mons_data2.nat"
 "data/prm/mon_list.gp2::mon_list.nat" = "data/prm/mons_list3.nat"
 "data/prm/mon_trv1.gp2::mon_trv1.nat" = "data/prm/mons_trv1.nat"
@@ -135,6 +138,8 @@
 "data/scenario/cmtQ141.gp2::Q141.bin" = "data/scenario/cmtQ141.bin"
 "data/scenario/cmtTailC.gp2::TailC.bin" = "data/scenario/cmtTailC.bin"
 "data/scenario/cmtTailG.gp2::TailG.bin" = "data/scenario/cmtTailG.bin"
+# The quest log.
+"data/scenario/questmsg.gp2::questmsg.bin" = "data/scenario/quest_msg2.bin"
 "data/scenario/str_ch0.gp2::str_ch0.nat" = "data/scenario/str_church_0.nat"
 "data/scenario/str_ch1.gp2::str_ch1.nat" = "data/scenario/str_church_1.nat"
 "data/scenario/str_ch2.gp2::str_ch2.nat" = "data/scenario/str_church_2.nat"

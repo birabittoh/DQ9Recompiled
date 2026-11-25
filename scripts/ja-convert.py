@@ -233,6 +233,14 @@ KEEP_PAL_RECORDS = {
         lambda rid: 0x4268 <= rid <= 0x4274 or 0x4A38 <= rid < 0x4E20,
 }
 
+# Units whose lines of the given record kinds are emptied: the movie
+# subtitles (overlay 16 draws them over the movie; YDQJ's movies, taken
+# as they are, show their own text).
+BLANK_RECORDS = {
+    "data/bin/menu/str_jop.gp2::str_jop.bin": {103},
+    "data/bin/menu/str_jvs.gp2::str_jvs.bin": {103},
+}
+
 # Japanese lines for units YDQJ has no file for (its code writes them):
 # {unit: {record id: Shift-JIS line in YDQP's form}}. A record's entry can
 # instead bind placeholders of YDQJ's own line ({"<str_1>": "<TARGET>"}),
@@ -409,15 +417,22 @@ class Text:
         keep_pal = KEEP_PAL_RECORDS.get(self.unit)
         own_lines = self.plan.ja_strings.get(self.unit, {})
         for i, (kind, _, args) in enumerate(en.records):
-            idx = sorted(spos.get((kind, len(args)), ()))
-            idx = [k for k in idx if args[k] != 0xFFFFFFFF and args[k] in valid]
+            every = sorted(spos.get((kind, len(args)), ()))
+            idx = [k for k in every if args[k] != 0xFFFFFFFF and args[k] in valid]
             if not idx:
                 continue
             js = jps[i]
             fixes = []
             for n, k in enumerate(idx):
                 english = en.string(args[k]) or b""
-                found = js[min(n, len(js) - 1)] if js is not None else None
+                # The JP string at the same argument (a record with each
+                # string argument's), else the n-th (one string per record).
+                if js is None:
+                    found = None
+                elif len(js) == len(every) > 1:
+                    found = js[every.index(k)]
+                else:
+                    found = js[min(n, len(js) - 1)]
                 if found is not None and FILE_NAME.fullmatch(english):
                     found = None
                     stats["strings: file names"] += 1
@@ -431,7 +446,11 @@ class Text:
                 # apply to each.
                 own = own_lines.get(args[0]) if args else None
                 forced = own if isinstance(own, dict) else None
-                if own is not None and forced is None and n == 0:
+                if kind in BLANK_RECORDS.get(self.unit, ()):
+                    converted = b""
+                    pieces = []
+                    stats["strings: blanked"] += 1
+                elif own is not None and forced is None and n == 0:
                     converted = own
                     pieces = [(R, converted)]
                     stats["strings: ja-strings.toml"] += 1
@@ -564,7 +583,7 @@ FONT_TRAILER = b"DQ9JFONT"
 # they are images (their text drawn in Japanese). Anything else keeps
 # YDQP's English one: YDQJ's counterparts of the rest are other formats
 # (itemdt_*.nat are itemdata_*3.cn there; the equipment setup overran the
-# heap on them).
+# heap on them; itemdt_ops gives them YDQJ's names).
 JP_IMAGES = {".pac", ".spr", ".ncgr", ".lia"}
 
 
@@ -761,6 +780,83 @@ def name_pac_ops(pal_ref, pal_data, jp_ref, jp_data):
 # ---------------------------------------------------------------------------
 # The plan
 
+ITEMDT_UNIT = re.compile(r"data/prm/itemdt(_[a-z])?\.gp2::itemdt(_[a-z])?\.nat")
+ITEMDT_NAMES = "data/prm/itemname.nat"
+
+
+def itemdt_ops(plan, unit, langs):
+    """The equipment tables (itemdt*.nat) with YDQJ's item names. Not the
+    .nat layout: u16 count, u16 flags, u32 0, u32 pool size, then 32-byte
+    records (+4 the name's offset in the pool or 0xFFFFFFFF, +0x18 the u16
+    item id), other tables, and the pool last. YDQJ's counterparts
+    (itemdata_*3.cn) are another format: the names come from its
+    itemname.nat, by id. Everything but the names stays YDQP's."""
+    en_ref = langs["en"]
+    en = plan.pal.get(en_ref)
+    count, = struct.unpack_from("<H", en, 0)
+    pool_size, = struct.unpack_from("<I", en, 8)
+    pool = len(en) - pool_size
+    if pool < 12 + 32 * count:
+        return None
+    names = jm.parse_any(plan.jp.get(ITEMDT_NAMES))
+    by_id = {}
+    for _, _, (iid, off) in names.records:
+        s = names.string(off)
+        if s:
+            by_id.setdefault(iid & 0xFFFF, (s, names.nat.pool + off))
+    jp_ref = folder_ref(ITEMDT_NAMES)
+    pal_ref = folder_ref(en_ref)
+    stats = plan.stats
+    pool_ops = Ops()
+    offsets = {}
+    fixes = []
+    for i in range(count):
+        rec = 12 + 32 * i
+        off, = struct.unpack_from("<I", en, rec + 4)
+        if off == 0xFFFFFFFF or off >= pool_size:
+            continue
+        end = en.find(b"\0", pool + off)
+        english = en[pool + off:end]
+        iid, = struct.unpack_from("<H", en, rec + 0x18)
+        hit = by_id.get(iid)
+        if hit is None:
+            key, pieces = english, [(P, pal_ref, pool + off, len(english))]
+            stats["strings: English"] += 1
+        else:
+            text, at = hit
+            spans = ja_text.convert_spans(text, english)
+            key = b"".join(text[a:b] if k == "keep" else a for k, a, b in spans)
+            pieces = [(J, jp_ref, at + a, b - a) if k == "keep" else (R, a)
+                      for k, a, b in spans]
+            stats["strings: Japanese"] += 1
+        if key not in offsets:
+            offsets[key] = pool_ops.size
+            for piece in pieces:
+                if piece[0] == J:
+                    pool_ops.j(*piece[1:])
+                elif piece[0] == P:
+                    pool_ops.p(*piece[1:])
+                else:
+                    pool_ops.r(piece[1])
+            pool_ops.z(1)
+        fixes.append((rec + 4, offsets[key]))
+    out = Ops()
+    out.p(pal_ref, 0, 8)
+    out.r(struct.pack("<I", pool_ops.size))
+    at = 12
+    for word, value in fixes:
+        out.p(pal_ref, at, word - at)
+        out.r(struct.pack("<I", value))
+        at = word + 4
+    out.p(pal_ref, at, pool - at)
+    out.extend(pool_ops)
+    if out.size > max(len(plan.pal.get(r)) for r in langs.values()):
+        print(f"ja-convert: {unit}: {out.size} bytes, more than any YDQP language's",
+              file=sys.stderr)
+    stats["units: equipment names"] += 1
+    return out
+
+
 class Planner:
     def __init__(self, pal_dir, jp_dir, cache):
         self.pal = Release(pal_dir, cache)
@@ -876,7 +972,10 @@ class Planner:
             out = name_pac_ops(folder_ref(langs["en"]), self.pal.get(langs["en"]),
                                folder_ref(ref), self.jp.get(ref))
             self.stats["units: name keyboard"] += 1
-        if out is None and "en" in langs and                 jm.parse_any(self.pal.get(langs["en"])) is not None:
+        if out is None and "en" in langs and ITEMDT_UNIT.fullmatch(unit):
+            out = itemdt_ops(self, unit, langs)
+        if out is None and "en" in langs and \
+                jm.parse_any(self.pal.get(langs["en"])) is not None:
             out = Text(self, unit, langs, ref).build()
             self.stats["units: text"] += 1
         if out is None and ref is not None and                 os.path.splitext(ref)[1].lower() in JP_IMAGES:
