@@ -275,7 +275,14 @@ struct BattleHud {
     int sub_x0 = 0, sub_y0 = 0, sub_x1 = 0, sub_y1 = 0;
     int subs = 0;
     int sub_rect[7][4]{};  // its windows: x0, y0, x1, y1
+    // While no one chooses commands, the results (experience...) over the
+    // panels: the windows starting left of the commands (the results at 32;
+    // the last chooser's windows stay open, not shown, at 72 and 112).
+    bool results = false;
+    int res_x0 = 0, res_y0 = 0, res_x1 = 0, res_y1 = 0;
 };
+
+constexpr int kResultsMaxX = 64;
 
 std::mutex g_hud_mutex;
 BattleHud g_hud;
@@ -348,6 +355,13 @@ BattleHud ReadBattleHud() {
         hud.windows = true;
         hud.across = hud.across || !inside;
         rects[opened++] = {x, y, x + w, y + h, !inside};
+        if (x < kResultsMaxX) {
+            hud.res_x0 = hud.results ? std::min(hud.res_x0, x) : x;
+            hud.res_y0 = hud.results ? std::min(hud.res_y0, y) : y;
+            hud.res_x1 = hud.results ? std::max(hud.res_x1, x + w) : x + w;
+            hud.res_y1 = hud.results ? std::max(hud.res_y1, y + h) : y + h;
+            hud.results = true;
+        }
     }
     if (hud.across) {
         // Its windows reach as far right as the across ones (the spells' or
@@ -394,23 +408,29 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         if (n < kNdsTitleMaxInsetPieces)
             pieces[n++] = {sx, sy, sw, sh, dx, dy, sw * scale, sh * scale};
     };
-    if (hud.panels == 0) {
-        // A window alone (the results): big, at the top in the middle.
-        const float x0 = float(std::max(hud.win_x0 - 3, 0));
-        const float y0 = float(std::max(hud.win_y0 - 3, 0));
-        const float w = float(std::min(hud.win_x1 + 3, 256)) - x0;
-        const float h = float(std::min(hud.win_y1 + 3, 192)) - y0;
-        const float scale = std::min({1.0f, 200.0f / w, 110.0f / h});
+    // The results: big, at the top in the middle, at the UI size like the
+    // main screen's text boxes.
+    const auto results = [&](int wx0, int wy0, int wx1, int wy1) {
+        const float x0 = float(std::max(wx0 - 3, 0));
+        const float y0 = float(std::max(wy0 - 3, 0));
+        const float w = float(std::min(wx1 + 3, 256)) - x0;
+        const float h = float(std::min(wy1 + 3, 192)) - y0;
+        const float scale = std::min({1.0f, 200.0f / w, 110.0f / h}) *
+                            float(dq9::UiScale());
         add(x0, y0, w, h, (nds_title_wide_width() - w * scale) / 2, 6,
             scale);
         return n;
-    }
+    };
+    if (hud.panels == 0)
+        return results(hud.win_x0, hud.win_y0, hud.win_x1, hud.win_y1);
+    if (!hud.tall && hud.results)
+        return results(hud.res_x0, hud.res_y0, hud.res_x1, hud.res_y1);
     const float raise = hud.panels == 1 ? kAloneRaise : 0.0f;
-    // A submenu opens only while someone chooses commands; during the
-    // actions a window outside the panels is the action's line (below a
-    // party of one's panel).
+    // A submenu opens only while someone chooses commands. During the
+    // actions the last chooser's windows stay open without showing: left
+    // out, the panels split as usual.
     const bool submenu = hud.across && hud.tall && hud.sub_x0 >= kMinSubmenuX;
-    if (hud.across && !submenu) {
+    if (hud.across && hud.tall && !submenu) {
         // A window across the panels that is not a submenu, or covers their
         // names too: all of it in one piece, so its windows stay whole.
         int top = hud.panel_y[0], bottom = hud.panel_y[0] + hud.panel_h[0];

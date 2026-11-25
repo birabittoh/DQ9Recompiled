@@ -65,6 +65,12 @@ double UiScale() {
     return reference / static_cast<double>(points);
 }
 
+}  // namespace
+
+double dq9::UiScale() { return ::UiScale(); }
+
+namespace {
+
 // The netplay chat drawn over the game follows the same size.
 const bool kChatScale = (nds_chat_overlay_set_scale_source(&UiScale), true);
 

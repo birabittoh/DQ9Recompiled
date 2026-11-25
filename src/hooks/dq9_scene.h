@@ -275,4 +275,8 @@ inline bool FullScreenPage() {
     return RecordsPage() || CharacterPage() || InnPage() || TreasureMapPage();
 }
 
+// The UI size's scale about the screen centre, 1 = as on the DS
+// (text_box_size.cpp).
+double UiScale();
+
 }  // namespace dq9
