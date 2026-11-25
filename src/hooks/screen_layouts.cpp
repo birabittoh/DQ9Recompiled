@@ -14,7 +14,8 @@
 // Display > 2nd screen pos.: Over draws the second screen over the main
 // one instead, see-through, in its bottom-left corner: in the field the map
 // (the top LCD) at a third of the main screen's size, in battle the commands
-// and the party (the bottom LCD) at half its size, over the 3D. Its fill is
+// and the party (the bottom LCD) at half its size, over the 3D (at the
+// default Display > 2nd screen size, 30%; the others scale it). Its fill is
 // see-through, its white frames and letters solid. Elsewhere (the title, the
 // pages that move the 3D to the top LCD) the second screen stays beside.
 //
@@ -46,6 +47,7 @@
 //   +172 / +174 x / y, s16 tiles, +197 bit 0 open.
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <mutex>
 #include <vector>
@@ -412,19 +414,41 @@ BattleHud ReadBattleHud() {
     return hud;
 }
 
-// Pieces in the main screen's pixels: half size, from its bottom left (of a
-// widened or taller view too), a 2-pixel gap under and beside each.
+// Display > 2nd screen size sizes the inset over the main screen too: its
+// default (30%) gives the sizes below, the others scale them.
+constexpr int kDefaultSecondScreenSize = 30;
+
+float SecondScreenFactor() {
+    return float(nds_title_second_screen_size()) / kDefaultSecondScreenSize;
+}
+
+// A percent of the main screen at the default size, at the chosen one.
+int OverPercent(int percent) {
+    const long scaled = std::lround(percent * SecondScreenFactor());
+    return int(std::clamp<long>(scaled, 1, 100));
+}
+
+// Pieces in the main screen's pixels: half size at the default 2nd screen
+// size, from its bottom left (of a widened or taller view too), a 2-pixel gap
+// under and beside each.
 constexpr float kHalf = 0.5f;
 constexpr float kGap = 2.0f;
 constexpr float kLeft = 2.0f;
-// A party of one stands a panel higher, easier to see.
-constexpr float kAloneRaise = 40 * kHalf + kGap;
 // A submenu starting left of this covers the panels' names: kept whole with
 // them.
 constexpr int kMinSubmenuX = 64;
 
+// The pieces' scale: never past the DS's size, nor so big that the two
+// columns of whole (256-wide) panels overlap.
+float PieceScale() {
+    const float fit =
+        (float(nds_title_wide_width()) - 2 * kLeft - kGap) / (2 * 256);
+    return std::min({kHalf * SecondScreenFactor(), fit, 1.0f});
+}
+
 int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
     int n = 0;
+    const float half = PieceScale();
     const auto add = [&](float sx, float sy, float sw, float sh, float dx,
                          float dy, float scale) {
         if (n < kNdsTitleMaxInsetPieces)
@@ -447,7 +471,8 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         return results(hud.win_x0, hud.win_y0, hud.win_x1, hud.win_y1);
     if (!hud.tall && hud.results)
         return results(hud.res_x0, hud.res_y0, hud.res_x1, hud.res_y1);
-    const float raise = hud.panels == 1 ? kAloneRaise : 0.0f;
+    // A party of one stands a panel higher, easier to see.
+    const float raise = hud.panels == 1 ? 40 * half + kGap : 0.0f;
     // A submenu opens only while someone chooses commands. During the
     // actions the last chooser's windows stay open without showing: left
     // out, the panels split as usual.
@@ -464,7 +489,7 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         bottom = std::max(bottom, hud.win_y1);
         const float h = float(bottom - top);
         add(0, float(top), 256, h, kLeft,
-            float(nds_title_wide_height()) - h * kHalf - kGap - raise, kHalf);
+            float(nds_title_wide_height()) - h * half - kGap - raise, half);
         return n;
     }
     // Two columns of up to two panels each, one in each bottom corner, the
@@ -490,30 +515,30 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         float total = raise;
         int widest = 0;
         for (int i = first; i < last; ++i) {
-            total += hud.panel_h[i] * kHalf + kGap;
+            total += hud.panel_h[i] * half + kGap;
             widest = std::max(widest, panel_w(i));
         }
         float y = float(nds_title_wide_height()) - total;
         const float dx = column == 0
             ? kLeft
-            : float(nds_title_wide_width()) - kLeft - widest * kHalf;
+            : float(nds_title_wide_width()) - kLeft - widest * half;
         for (int i = first; i < last; ++i) {
             const float sx = float(hud.panel_x[i]);
             const float sy = float(hud.panel_y[i]);
             const float sh = float(hud.panel_h[i]);
             // Whole rows: OutsideFrames leaves only what is inside the frames.
             if (submenu) {
-                add(sx, sy, float(panel_w(i)), sh, dx, y, kHalf);
+                add(sx, sy, float(panel_w(i)), sh, dx, y, half);
             } else if (hud.tall) {
                 // Choosing commands: the whole panels.
-                add(sx, sy, 256, sh, dx, y, kHalf);
+                add(sx, sy, 256, sh, dx, y, half);
             } else {
                 // The actions: each panel's name and HP/MP, then its right
                 // edge.
-                add(sx, sy, 119, sh, dx, y, kHalf);
-                add(sx + 241, sy, 15, sh, dx + 119 * kHalf, y, kHalf);
+                add(sx, sy, 119, sh, dx, y, half);
+                add(sx + 241, sy, 15, sh, dx + 119 * half, y, half);
             }
-            y += sh * kHalf + kGap;
+            y += sh * half + kGap;
         }
     }
     if (submenu) {
@@ -521,13 +546,13 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         // and their bounds (the panels' edges) stays with the panels.
         const float w = float(hud.sub_x1 - hud.sub_x0);
         const float h = float(hud.sub_y1 - hud.sub_y0);
-        const float x = (nds_title_wide_width() - w * kHalf) / 2;
-        const float top = float(nds_title_wide_height()) - h * kHalf - kGap;
+        const float x = (nds_title_wide_width() - w * half) / 2;
+        const float top = float(nds_title_wide_height()) - h * half - kGap;
         for (int s = 0; s < hud.subs; ++s) {
             const int* r = hud.sub_rect[s];
             add(float(r[0]), float(r[1]), float(r[2] - r[0]),
-                float(r[3] - r[1]), x + (r[0] - hud.sub_x0) * kHalf,
-                top + (r[1] - hud.sub_y0) * kHalf, kHalf);
+                float(r[3] - r[1]), x + (r[0] - hud.sub_x0) * half,
+                top + (r[1] - hud.sub_y0) * half, half);
         }
     }
     return n;
@@ -543,7 +568,7 @@ int InsetOverlay(int screen, const uint32_t* pixels, int width,
         return 0;
     if (screen == 0) {
         SeeThrough(pixels, width, out, kMapFill);
-        return kMapPercent;
+        return OverPercent(kMapPercent);
     }
     if (!g_battle_at_swap.load(std::memory_order_relaxed)) return 0;
     SeeThrough(pixels, width, out, kBattleFill);
@@ -554,7 +579,7 @@ int InsetOverlay(int screen, const uint32_t* pixels, int width,
         hud = g_hud;
     }
     // Until the panels are up, the whole screen.
-    if (!hud.valid) return kBattlePercent;
+    if (!hud.valid) return OverPercent(kBattlePercent);
     *piece_count = CutBattleHud(hud, pieces);
     return 100;
 }
