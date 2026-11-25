@@ -161,6 +161,7 @@ inline constexpr Placement kLayout[] = {
     {"display.resolution_scale", "Display"},
     {"display.scaling", "Display"},
     {"display.second_screen_size", "Display"},
+    {"title.second_screen_over", "Display"},
     {"display.show_fps", "Display"},
     {"display.smooth_3d", "Display"},  // never shown: fps_mode owns it
     {"title.mouse_friendly", "Controls/Pointer"},
