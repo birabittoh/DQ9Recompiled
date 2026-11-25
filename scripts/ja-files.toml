@@ -25,9 +25,10 @@
 "data/ani/bgii20.gp2::bgii20.pac" = ""
 "data/ani/bgii21.gp2::bgii21.pac" = ""
 "data/ani/bgii22.gp2::bgii22.pac" = ""
-"data/ani/bglii20.gp2::bglii20.pac" = "data/ani/bgl_ii2_0.pac"
-"data/ani/bglii21.gp2::bglii21.pac" = "data/ani/bgl_ii2_1.pac"
-"data/ani/bglii22.gp2::bglii22.pac" = "data/ani/bgl_ii2_2.pac"
+# Their other screen maps, drawn with the bgii2* tiles: YDQP's too.
+"data/ani/bglii20.gp2::bglii20.pac" = ""
+"data/ani/bglii21.gp2::bglii21.pac" = ""
+"data/ani/bglii22.gp2::bglii22.pac" = ""
 "data/ani/cell_jrm.gp2::cell_jrm.pac" = "data/ani/cell_jr_ms.pac"
 "data/ani/clmm.gp2::clmm.pac" = "data/ani/cell_mm.pac"
 "data/ani/comb.gp2::comb.pac" = "data/ani/com_base.pac"
