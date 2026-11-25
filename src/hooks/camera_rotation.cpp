@@ -316,7 +316,7 @@ const NdsTouchButtonSpec kEmote = {
         "..#.....#..",
         "...#####...",
     },
-    NdsTouchButtonPlace::BottomCenter,
+    NdsTouchButtonPlace::TopCenterNext,
     kKeyB,
     EmoteShown,
     // B stays held after the tap, while an emote is picked on the
@@ -332,7 +332,8 @@ bool LandShown() {
 
 constexpr uint16_t kKeyA = 1u << 0;
 
-// In the emote button's place, which never shows in the sky.
+// In the emote button's place (beside the fast-forward one), which never
+// shows in the sky.
 const NdsTouchButtonSpec kLand = {
     {
         // An arrow down onto the ground.
@@ -346,7 +347,7 @@ const NdsTouchButtonSpec kLand = {
         "...........",
         ".#########.",
     },
-    NdsTouchButtonPlace::BottomCenter,
+    NdsTouchButtonPlace::TopCenterNext,
     kKeyA,
     LandShown,
 };
