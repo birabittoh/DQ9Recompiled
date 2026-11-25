@@ -77,6 +77,9 @@ int g_grid_hover_x = 0, g_grid_hover_y = 0;
 // the mouse position (0 when none), set by Dq9MouseMenuListPress.
 uint32_t g_list_hover = 0;
 int g_list_hover_x = 0, g_list_hover_y = 0;
+// The widget the last list pen pass ran on, and whether it was the hover.
+uint32_t g_list_pass_widget = 0;
+bool g_list_pass_hover = false;
 
 // When a choice last ran its pen step (a simple choice list, or a window list
 // such as the priest's): see Dq9ChoiceListActive.
@@ -133,10 +136,23 @@ NDS_TITLE_HOOK void Dq9MouseMenuGridChoose(uint32_t* cpsr) {
 NDS_TITLE_HOOK void Dq9MouseMenuListPress(uint32_t* press, uint32_t* widget) {
     g_list_hover = 0;
     g_choice_seen = std::chrono::steady_clock::now();
+    g_list_pass_widget = *widget;
+    g_list_pass_hover = false;
     if (!Enabled() || *press != 0u) return;
     if (!HoverMoved(*widget, &g_list_hover_x, &g_list_hover_y)) return;
     g_list_hover = *widget;
+    g_list_pass_hover = true;
     *press = 1u;
+}
+
+// Before `cmpeqs r0, r1` at 0x021863DC (Allocate Skill Points): r1 is this
+// frame's pen step result, r0 the last one, r8 the scene (its list widget is
+// r8+0x3C). Both 2 on the Confirm entry opens the prompt: a hover never
+// counts, a click counts as the second tap (the hover put the cursor there).
+NDS_TITLE_HOOK void Dq9MouseMenuSkillConfirm(uint32_t* last, uint32_t* now,
+                                             uint32_t* scene) {
+    if (!Enabled() || *now != 2u || g_list_pass_widget != *scene + 0x3Cu) return;
+    *last = g_list_pass_hover ? 0u : *now;
 }
 
 // At 0x0205BC8C, before the position is loaded: x is at sp+4, y at sp+0.

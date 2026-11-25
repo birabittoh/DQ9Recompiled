@@ -1,0 +1,22 @@
+# Mouse-friendly menus: the Allocate Skill Points screen. Handler:
+# src/hooks/mouse_menus.cpp (Dq9MouseMenuSkillConfirm).
+#
+# The state-1 step 0x02186160 opens the "End skill point allocation?" prompt
+# for the Confirm entry (cursor 5) when the window list's pen step
+# (0x0205D0F0, stored at scene+0x648) returned 2, "the pen moved the cursor",
+# in this frame and the one before (scene+0x64C), with the cursor on Confirm
+# both times: a tap on the entry, then another. The mouse hover makes the pen
+# step return 2 on every move, so two moves over Confirm opened the prompt.
+# The hook, before the `cmpeqs r0, r1` that compares the two results, makes a
+# hover never count, and a click count as the second tap.
+version = 1
+
+[program]
+bank = "dq9_arm9_ov013"
+sha1 = "5beffbcb4663118f50154d6c3eb3361e52da46d2"
+
+[[hook]]
+address = 0x021863DC      # cmpeqs r0, r1 (r0 = last result, r1 = this one, r8 = scene)
+mode = "arm"
+name = "Dq9MouseMenuSkillConfirm"
+registers = ["r0", "r1", "r8"]
