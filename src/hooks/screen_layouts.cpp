@@ -33,7 +33,9 @@
 // columns on its own, the panels keeping what is left of it (one piece with
 // them when it covers their names too); a window with no panels (the results) goes at the top in
 // the middle. Only what is inside the panels' and windows' white frames is
-// drawn (OutsideFrames).
+// drawn (OutsideFrames). In a main screen taller than wide (a portrait
+// window) the commands screen is drawn whole instead, as on the DS, at the
+// bottom in the middle.
 //
 // The panels come from the battle's panel manager, ctrl+14176 (ov000
 // 0x02160F08), ctrl being *(*(*(0x020F33D8) + 0x3718) + 1708) (as ov000
@@ -446,6 +448,11 @@ float PieceScale() {
     return std::min({kHalf * SecondScreenFactor(), fit, 1.0f});
 }
 
+// A main screen taller than wide: no room for two columns side by side.
+bool PortraitView() {
+    return nds_title_wide_height() > nds_title_wide_width();
+}
+
 int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
     int n = 0;
     const float half = PieceScale();
@@ -454,6 +461,14 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
         if (n < kNdsTitleMaxInsetPieces)
             pieces[n++] = {sx, sy, sw, sh, dx, dy, sw * scale, sh * scale};
     };
+    // Portrait: the commands screen whole, as on the DS (the panels one
+    // above the other, the submenus and results where they open), at the
+    // bottom in the middle.
+    if (PortraitView()) {
+        add(0, 0, 256, 192, (nds_title_wide_width() - 256 * half) / 2,
+            float(nds_title_wide_height()) - 192 * half - kGap, half);
+        return n;
+    }
     // The results: big, at the top in the middle, at the UI size like the
     // main screen's text boxes.
     const auto results = [&](int wx0, int wy0, int wx1, int wy1) {
