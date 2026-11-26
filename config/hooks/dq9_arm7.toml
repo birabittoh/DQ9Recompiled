@@ -29,3 +29,17 @@ mode = "arm"
 name = "Dq9WlSetStatusFlag"
 registers = ["r0", "lr"]
 
+
+# Real-time audio (handler: src/hooks/sound_catchup.cpp). 0x037FF6C0 is the
+# NITRO SDK's SndThread; its loop blocks here in OS_ReceiveMessage until the
+# 5.2 ms interval alarm (2728 ticks of the 64-cycle timer) posts message 1,
+# then runs one sound driver tick with update = TRUE (r9 = r4 = 1 at
+# 0x037FF778). While the emulation runs below real time, the handler mixes
+# one tick of SPU output at once and jumps straight into another tick, so
+# music and effects keep the host's tempo.
+[[hook]]
+address = 0x037FF760      # bl OS_ReceiveMessage (r0 = queue, r2 = BLOCK)
+mode = "arm"
+name = "Dq9SndCatchUp"
+on_true = "jump"
+jump_address = 0x037FF778 # mov r9, r4: update = TRUE, then the tick
