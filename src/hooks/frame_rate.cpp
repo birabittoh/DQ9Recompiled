@@ -42,9 +42,9 @@
 //
 // Twice the passes is about twice the host work: a town took 16 ms of the
 // 16.7 ms frame on an i7-13650HX and a dialogue box 17.7, so the host fell
-// to 52 fps. 60 FPS therefore also lets the scheduler run the ARM9 in longer
-// stretches while the ARM7 sleeps (nds_title_set_event_windows), which cuts
-// the cost of each frame.
+// to 52 fps. The scheduler therefore runs the ARM9 in longer stretches while
+// the ARM7 sleeps (nds_title_set_event_windows), which cuts the cost of each
+// frame; this is on in every mode.
 //
 // While the text of a 2D message window is appearing, the game redoes the
 // whole window on every pass, which at 60 FPS still cost about 2 ms a frame
@@ -56,8 +56,8 @@
 // The hooks that only do the guest's work natively (heap lookup, kerning,
 // 4bpp blit, GXFIFO send, geometry command buffer, box-test wait) run in
 // every mode: Off in a town needed 20 ms a frame on a Snapdragon 7s Gen 3
-// without them. The pacing, clocks, event windows and the half-rate text
-// window stay Accurate-only.
+// without them. The pacing, clocks and the half-rate text window stay
+// Accurate-only.
 #include "gpu3d.h"
 #include "io.h"
 #include "title_hooks.h"
@@ -116,7 +116,7 @@ NDS_TITLE_HOOK void Dq9FrameRate(uint32_t* r0, uint32_t* r7) {
     const bool draw60 = Draw60();
     nds_title_set_arm9_overclock(draw60 ? 2 : 1);
     nds_title_set_card_speedup(draw60 ? 16 : 1);
-    nds_title_set_event_windows(draw60);
+    nds_title_set_event_windows(true);
     if (draw60) *r7 = 1u - *r0;
 }
 
