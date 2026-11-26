@@ -15,7 +15,8 @@
 // one instead, see-through, in its bottom-left corner: in the field the map
 // (the top LCD) at a third of the main screen's size, in battle the commands
 // and the party (the bottom LCD) at half its size, over the 3D (at the
-// default Display > 2nd screen size, 30%; the others scale it). Its fill is
+// default Display > 2nd screen size, 30%; the others scale it, the battle's
+// in a portrait window only). Its fill is
 // see-through, its white frames and letters solid. Elsewhere (the title, the
 // pages that move the 3D to the top LCD) the second screen stays beside.
 //
@@ -440,17 +441,21 @@ constexpr float kLeft = 2.0f;
 // them.
 constexpr int kMinSubmenuX = 64;
 
-// The pieces' scale: never past the DS's size, nor so big that the two
-// columns of whole (256-wide) panels overlap.
-float PieceScale() {
-    const float fit =
-        (float(nds_title_wide_width()) - 2 * kLeft - kGap) / (2 * 256);
-    return std::min({kHalf * SecondScreenFactor(), fit, 1.0f});
-}
-
 // A main screen taller than wide: no room for two columns side by side.
 bool PortraitView() {
     return nds_title_wide_height() > nds_title_wide_width();
+}
+
+// The pieces' scale, never past the DS's size. Portrait: the whole commands
+// screen, sized by Display > 2nd screen size up to the main screen's width.
+// Landscape: half size whatever that setting says, but never so big that the
+// two columns of whole (256-wide) panels overlap.
+float PieceScale() {
+    const float width = float(nds_title_wide_width());
+    if (PortraitView())
+        return std::min({kHalf * SecondScreenFactor(),
+                         (width - 2 * kLeft) / 256, 1.0f});
+    return std::min({kHalf, (width - 2 * kLeft - kGap) / (2 * 256), 1.0f});
 }
 
 int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
@@ -593,8 +598,10 @@ int InsetOverlay(int screen, const uint32_t* pixels, int width,
         std::lock_guard<std::mutex> lock(g_hud_mutex);
         hud = g_hud;
     }
-    // Until the panels are up, the whole screen.
-    if (!hud.valid) return OverPercent(kBattlePercent);
+    // Until the panels are up, the whole screen (sized by the setting in
+    // portrait only, as the pieces are).
+    if (!hud.valid)
+        return PortraitView() ? OverPercent(kBattlePercent) : kBattlePercent;
     *piece_count = CutBattleHud(hud, pieces);
     return 100;
 }
