@@ -13,6 +13,11 @@ on a recompiled FreeBIOS and a generated firmware.
 
 Feel free to visit DQ9Recompiled's [official Discord server](https://discord.gg/DJe2pXMH7S) if you need any help.
 
+|   |   |
+|:---:|:---:|
+| <img width="3840" height="2160" alt="battle" src="https://github.com/user-attachments/assets/44ba7ca2-5543-4fe5-8efb-a62c6e5a469e" /><br>Single-screen battle UI | <img width="3840" height="2160" alt="battle2" src="https://github.com/user-attachments/assets/e44a6eb4-1882-4b3e-ba49-b50d544cb549" /><br>Minimal when not issuing orders |
+| <img width="1470" height="2112" alt="vertical" src="https://github.com/user-attachments/assets/5730ddef-47ae-4e60-bc19-40c610ed4046" /><br>Variable resolution support (including ultrawide) | <img width="1441" height="2160" alt="qol" src="https://github.com/user-attachments/assets/d89164d5-cb75-4a4f-b6b4-61799045a7f0" /><br>Quality of life options |
+
 ## Features
 
 * **Skip intros**: boots past the logos and the opening movie.
@@ -20,7 +25,7 @@ Feel free to visit DQ9Recompiled's [official Discord server](https://discord.gg/
 * **Unlocked camera rotation**: you can now rotate it freely.
 * **UI size**: optimized text boxes and menus for big windows.
 * **Language**: switch between English, French, German, Italian and Spanish
-  without a restart. Japanese is available only when playing a JP ROM.
+  without a restart. Japanese is available only with a JP ROM.
 * **Any resolution**: 3D renders at any resolution, including ultrawide.
 * **2nd screen position**: pieces of the secondary screen are drawn on top of
   the primary one during exploration and battles.
