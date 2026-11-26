@@ -755,6 +755,24 @@ address = 0x020AB4C0      # bl 0x02094D7C, after the 0xA0 copy into mgr
 mode = "arm"
 name = "Dq9QuestLoad"
 
+# Last used first: a save writes each character's recent spells, abilities
+# and items to a file of their own next to the save file, and a load brings
+# back what it kept. Handler: src/hooks/recent_commands.cpp.
+[[hook]]
+address = 0x020AA92C      # bl 0x02094D7C, after the quests' copy into the image
+mode = "arm"
+name = "Dq9RecentSave"
+
+[[hook]]
+address = 0x020AB118      # bl 0x02001A40 (0x330 bytes), after the quests' load
+mode = "arm"
+name = "Dq9RecentLoad"
+
+[[hook]]
+address = 0x020AB4D4      # bl 0x02001A40 (0x330 bytes), after the quests' load
+mode = "arm"
+name = "Dq9RecentLoad"
+
 # Gathering spots after a Continue. The spots live in the save (100 words at
 # save + 0x5CDC: countdown, item mask, interval...). When the field starts
 # without a quick save to resume (ov17 0x0218B710 -> 0x0208EA20),

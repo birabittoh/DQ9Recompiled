@@ -37,3 +37,51 @@ address = 0x0217B3C8      # mov r8, r0 (r0 = new A)
 mode = "arm"
 name = "Dq9BattleTargetChoose"
 registers = ["r0"]
+
+# Last used first (handler src/hooks/recent_commands.cpp): the command
+# menu 0x0217AE90 (a command's state 13) opens the spells (state 15), the
+# abilities (state 16) or the items (state 17) of the panel (r7), after which
+# 0x0217AA78 puts the cursor on the last spell or ability chosen; the hooks
+# reorder the panel's list first.
+[[hook]]
+address = 0x0217B02C      # ldrsb r0, [r6, #0x10] (Spells, r7 = panel)
+mode = "arm"
+name = "Dq9RecentSpellsOpen"
+registers = ["r7"]
+
+[[hook]]
+address = 0x0217B15C      # ldrsb r1, [r6, #0x10] (Abilities, r7 = panel)
+mode = "arm"
+name = "Dq9RecentAbilitiesOpen"
+registers = ["r7"]
+
+# The spell list 0x0217B518 and the ability list 0x0217B6D0 took a choice
+# (0x02171458 / 0x021716D0 stored its id in panel+0x26 and pushed the next
+# state, 26 when it is refused) and noted it in the character (+2400 /
+# +2402).
+[[hook]]
+address = 0x0217B608      # ldrsb r0, [r8, #0x18] (r8 = panel)
+mode = "arm"
+name = "Dq9RecentSpellChosen"
+registers = ["r8"]
+
+[[hook]]
+address = 0x0217B7E0      # ldrsb r0, [r9, #0x18] (r9 = panel)
+mode = "arm"
+name = "Dq9RecentAbilityChosen"
+registers = ["r9"]
+
+# Items (state 17): 0x02171C04 makes the panel's item list anew each time
+# it opens; the item list 0x0217B8A4 stores the chosen item's id in
+# panel+0x2C and 0x02171E60 pushes the next state.
+[[hook]]
+address = 0x0217B228      # ldrsb r0, [r7, #0x86] (Items, r7 = panel)
+mode = "arm"
+name = "Dq9RecentItemsOpen"
+registers = ["r7"]
+
+[[hook]]
+address = 0x0217BA68      # ldrsb r0, [r10, #0x18] (r10 = panel)
+mode = "arm"
+name = "Dq9RecentItemChosen"
+registers = ["r10"]

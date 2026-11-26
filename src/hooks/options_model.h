@@ -136,7 +136,8 @@ inline bool Locked(const NdsTitleMenuRow& row) {
 //             keyboard (the keys, in two parts: buttons, then the D-pad
 //             and fast-forward),
 //             and the gamepad layout
-//   Quality of life  intros, text speed, quest limit, Zoom, camera rotation
+//   Quality of life  intros, text speed, quest limit, Zoom, last used
+//             spells, abilities and items first, camera rotation
 //   Multipliers  battle damage, EXP, gold and drops
 // Only the category changes: the keys, and so settings.toml, stay as they
 // are. A row not named here (System, or one added later) comes after these
@@ -186,6 +187,7 @@ inline constexpr Placement kLayout[] = {
     {"title.skip_text", "Quality of life"},
     {"title.unlimited_quests", "Quality of life"},
     {"title.zoom_indoors", "Quality of life"},
+    {"title.recent_commands", "Quality of life"},
     {"title.unlock_camera_rotation", "Quality of life"},
     {"title.mult_damage_dealt", "Multipliers"},
     {"title.mult_damage_taken", "Multipliers"},
