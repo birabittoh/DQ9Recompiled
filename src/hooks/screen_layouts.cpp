@@ -30,7 +30,8 @@
 // columns of two in the bottom corners, in the party's order (down the left
 // column, then the right), without the wood around them: whole
 // while someone chooses commands, only their names and HP/MP while the
-// actions play. A submenu across the panels (spells, items) goes between the
+// actions play. Display > Battle stats pos. puts those (the actions' only)
+// in one column in the bottom-left or bottom-right corner instead. A submenu across the panels (spells, items) goes between the
 // columns on its own, the panels keeping what is left of it (one piece with
 // them when it covers their names too); a window with no panels (the results) goes at the top in
 // the middle. Only what is inside the panels' and windows' white frames is
@@ -116,6 +117,26 @@ constexpr NdsTitleSetting kSecondScreenOver = {
 };
 
 const int kSecondScreenOverId = nds_title_setting_register(&kSecondScreenOver);
+
+// Where the party's names and HP/MP go while the actions play (landscape,
+// with Over): one column on the left or right, or split in the corners.
+constexpr int kStatsLeft = 0;
+constexpr int kStatsCenter = 1;
+constexpr int kStatsRight = 2;
+constexpr const char* kStatsChoices[] = {"Left", "Center", "Right"};
+constexpr int kStatsValues[] = {kStatsLeft, kStatsCenter, kStatsRight};
+
+constexpr NdsTitleSetting kBattleStatsPos = {
+    "battle_stats_pos",
+    "Battle stats pos.",
+    "Where the party's stats go while the actions play.",
+    0, 2, 1,
+    kStatsChoices, sizeof(kStatsChoices) / sizeof(kStatsChoices[0]),
+    kStatsValues,
+    kStatsCenter,
+};
+
+const int kBattleStatsPosId = nds_title_setting_register(&kBattleStatsPos);
 
 constexpr int kMapPercent = 33;      // the field's map: a third
 constexpr int kBattlePercent = 50;   // the battle's commands: half
@@ -529,9 +550,14 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
                 cut = std::min(cut, hud.sub_rect[s][0]);
         return hud.panel_tall[i] ? cut : std::min(cut, 119);
     };
-    for (int column = 0; column * 2 < hud.panels; ++column) {
-        const int first = column * 2;
-        const int last = std::min(first + 2, hud.panels);
+    // The actions, with Battle stats pos. at Left or Right: all the panels in
+    // one column on that side.
+    const int stats = nds_title_setting_value(kBattleStatsPosId);
+    const bool one_column = !submenu && !hud.tall && stats != kStatsCenter;
+    const int per_column = one_column ? 4 : 2;
+    for (int column = 0; column * per_column < hud.panels; ++column) {
+        const int first = column * per_column;
+        const int last = std::min(first + per_column, hud.panels);
         float total = raise;
         int widest = 0;
         for (int i = first; i < last; ++i) {
@@ -539,7 +565,8 @@ int CutBattleHud(const BattleHud& hud, NdsTitleInsetPiece* pieces) {
             widest = std::max(widest, panel_w(i));
         }
         float y = float(nds_title_wide_height()) - total;
-        const float dx = column == 0
+        const bool left = one_column ? stats == kStatsLeft : column == 0;
+        const float dx = left
             ? kLeft
             : float(nds_title_wide_width()) - kLeft - widest * half;
         for (int i = first; i < last; ++i) {
