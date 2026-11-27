@@ -80,6 +80,15 @@ int g_list_hover_x = 0, g_list_hover_y = 0;
 // The widget the last list pen pass ran on, and whether it was the hover.
 uint32_t g_list_pass_widget = 0;
 bool g_list_pass_hover = false;
+// A click on an entry that is not the one touched before (a touchscreen, or
+// a mouse that has not moved since the list opened) is split in two: its
+// frame runs as the hover (it moves the cursor), and the next frame clicks
+// again on the same point, now the cursor (see Dq9MouseMenuListSame).
+// g_list_reclick is the widget, armed in the click's frame and firing in the
+// next one, when 0x0205BD30 also sees the press edge.
+uint32_t g_list_reclick = 0;
+bool g_list_reclick_firing = false;
+int g_list_click_x = 0, g_list_click_y = 0;
 
 // When a choice last ran its pen step (a simple choice list, or a window list
 // such as the priest's): see Dq9ChoiceListActive.
@@ -138,6 +147,22 @@ NDS_TITLE_HOOK void Dq9MouseMenuListPress(uint32_t* press, uint32_t* widget) {
     g_choice_seen = std::chrono::steady_clock::now();
     g_list_pass_widget = *widget;
     g_list_pass_hover = false;
+    if (g_list_reclick_firing) {
+        g_list_reclick = 0;
+        g_list_reclick_firing = false;
+    }
+    if (g_list_reclick != 0) {
+        const bool mine = g_list_reclick == *widget;
+        if (!mine || !Enabled()) {
+            g_list_reclick = 0;
+        } else {
+            // The click's second frame: a fresh press on the same point.
+            g_list_reclick_firing = true;
+            bus_write_u8(*widget + 0x4Eu, 0u);
+            *press = 1u;
+            return;
+        }
+    }
     if (!Enabled() || *press != 0u) return;
     if (!HoverMoved(*widget, &g_list_hover_x, &g_list_hover_y)) return;
     g_list_hover = *widget;
@@ -157,17 +182,45 @@ NDS_TITLE_HOOK void Dq9MouseMenuSkillConfirm(uint32_t* last, uint32_t* now,
 
 // At 0x0205BC8C, before the position is loaded: x is at sp+4, y at sp+0.
 NDS_TITLE_HOOK void Dq9MouseMenuListPosition(uint32_t* sp) {
-    if (g_list_hover == 0) return;
+    if (g_list_reclick_firing) {
+        bus_write_u32(*sp + 4u, static_cast<uint32_t>(g_list_click_x));
+        bus_write_u32(*sp + 0u, static_cast<uint32_t>(g_list_click_y));
+        return;
+    }
+    if (g_list_hover == 0) {
+        g_list_click_x = static_cast<int>(bus_read_u32(*sp + 4u));
+        g_list_click_y = static_cast<int>(bus_read_u32(*sp + 0u));
+        return;
+    }
     bus_write_u32(*sp + 4u, static_cast<uint32_t>(g_list_hover_x));
     bus_write_u32(*sp + 0u, static_cast<uint32_t>(g_list_hover_y));
 }
 
 // Before `movne r0, #0` at 0x0205BCC4: Z is set when the entry under the pen
 // is the one touched before, and only then may the press choose it. A click
-// may always choose; the scene still wants it on the cursor entry, and the
-// mouse has put the cursor there.
+// there chooses. A click elsewhere moves the cursor, and the camp menu
+// chooses only when the cursor did not move in the same frame (0x021622EC):
+// that frame runs as the hover (cleaned up by Dq9MouseMenuListDone), and the
+// next one clicks again on the cursor entry.
 NDS_TITLE_HOOK void Dq9MouseMenuListSame(uint32_t* cpsr) {
-    if (Enabled() && g_list_hover == 0) *cpsr |= kCpsrZ;
+    if (!Enabled() || g_list_hover != 0) return;
+    if ((*cpsr & kCpsrZ) != 0u || g_list_reclick_firing) {
+        *cpsr |= kCpsrZ;
+        return;
+    }
+    g_list_hover = g_list_pass_widget;
+    g_list_pass_hover = true;
+    g_list_reclick = g_list_pass_widget;
+}
+
+// Before `cmp r1, #0` at 0x0205BD3C (0x0205BD30, "the press chooses"): r1 is
+// the touch manager's press edge, r0 the widget. The click's second frame
+// has no edge of its own.
+NDS_TITLE_HOOK void Dq9MouseMenuListChoose(uint32_t* widget, uint32_t* edge) {
+    if (!g_list_reclick_firing || *widget != g_list_reclick) return;
+    *edge = 1u;
+    g_list_reclick = 0;
+    g_list_reclick_firing = false;
 }
 
 // Before the `beq` that skips a list's green look (part 3, see

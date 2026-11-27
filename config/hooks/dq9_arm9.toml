@@ -345,7 +345,9 @@ registers = ["r0"]
 # mouse position when it has moved (the cursor follows the mouse; nothing is
 # chosen without a press edge), and on a press w+0x4C is always set, so a
 # click on the cursor entry chooses it. The entry under the mouse is the
-# cursor already, so one click chooses it.
+# cursor already, so one click chooses it. A click elsewhere (a touchscreen
+# has no hover) runs as the hover in its frame, and the next frame presses
+# again on the same point, with 0x0205BD30 seeing the press edge too.
 [[hook]]
 address = 0x0205BC70      # cmp r0, #0 (r0 = press edge, r4 = widget)
 mode = "arm"
@@ -369,6 +371,12 @@ address = 0x0205C65C      # b 0x0205C6C4 (cursor moved to the hit, r5 = owner)
 mode = "arm"
 name = "Dq9MouseMenuListDone"
 registers = ["r5"]
+
+[[hook]]
+address = 0x0205BD3C      # cmp r1, #0 (r1 = press edge, r0 = widget)
+mode = "arm"
+name = "Dq9MouseMenuListChoose"
+registers = ["r0", "r1"]
 
 # Mouse-friendly menus, part 4: the simple choice lists ("list B": the
 # Yes/No dialogs). Handler: src/hooks/mouse_menus.cpp.
