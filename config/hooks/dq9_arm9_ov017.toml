@@ -144,3 +144,13 @@ address = 0x021C17FC      # push (r0 = the Profile Settings task)
 mode = "arm"
 name = "Dq9ChatProfileTask"
 registers = ["r0"]
+
+# Inn guests, part 2 (handler: src/hooks/inn_guests.cpp, part 1 in
+# dq9_arm9.toml). 0x0218F064 mode 0x4000 builds the extra character from
+# the record in r7 (*(gs+9112)) into the heap r11 (scene+476); while the
+# spawner builds a guest, the hook gives it that guest's own record and heap.
+[[hook]]
+address = 0x0218F0C0      # add r1, r7, #0x1D8 (r11 = scene+476 just set)
+mode = "arm"
+name = "Dq9InnGuestBuildHeap"
+registers = ["r7", "r11"]

@@ -856,16 +856,29 @@ on_false = "continue"
 # Inn guests as live character models. Handler: src/hooks/inn_guests.cpp.
 #
 # The NPC spawner (0x0203D038) builds each inn guest (type 4) as character
-# slot 5, renders it into a sprite (0x0203E908) and frees the slot. For the
-# last guest in the list the second hook skips the sprite, the capture and
-# the teardown (0x0203D390..0x0203D468): the NPC keeps the character in
-# npc[7], which the NPC code positions and draws; the third steps its
-# animation each frame.
+# slot 5, renders it into a sprite (0x0203E908) and frees the slot. Here
+# each guest is built from its own record into its own heap in title RAM
+# (the BuildBegin / BuildEnd pair around the 0x0218F064 call, with
+# BuildHeap in dq9_arm9_ov017.toml), and KeepModel skips the sprite, the
+# capture and the teardown (0x0203D390..0x0203D468): the NPC keeps the
+# character in npc[7], which the NPC code positions and draws. Draw and
+# Step put the guest's slot-5 entries back before its draw and its
+# per-frame animation step.
 [[hook]]
 address = 0x0203D038      # NPC spawner entry (r0 = NPC manager)
 mode = "arm"
 name = "Dq9InnGuestSpawn"
 registers = ["r0"]
+
+[[hook]]
+address = 0x0203D2F8      # mov r0, r4 (args of 0x0218F064(scene, 5, 0x4000))
+mode = "arm"
+name = "Dq9InnGuestBuildBegin"
+
+[[hook]]
+address = 0x0203D30C      # ldr r0, [sp,#0x44] (after the build)
+mode = "arm"
+name = "Dq9InnGuestBuildEnd"
 
 [[hook]]
 address = 0x0203D390      # mov r0, r9 (alloc the guest's sprite)
@@ -876,9 +889,28 @@ on_true = "jump"
 jump_address = 0x0203D46C # ldr r0, [sp,#0x40] ; clear flag 0x400000
 
 [[hook]]
+address = 0x020409A0      # ldrsh r4, [r1,#4] (NPC draw, r1 = character)
+mode = "arm"
+name = "Dq9InnGuestDraw"
+registers = ["r1"]
+
+[[hook]]
 address = 0x02040C3C      # per-frame NPC update entry (r0 = npc)
 mode = "arm"
 name = "Dq9InnGuestStep"
 registers = ["r0"]
 on_true = "jump"
 jump_address = 0x02052AF8 # character animation step, tail call
+
+[[hook]]
+address = 0x020CA064      # SDK DMA address check (halts for >= 0x08000000)
+mode = "arm"
+name = "Dq9InnGuestDmaCheck"
+registers = ["r0", "r1", "r2", "r3"]
+on_true = "return"
+
+[[hook]]
+address = 0x020C9BF0      # OS_Terminate (halt loop) entry
+mode = "arm"
+name = "Dq9TerminateLog"
+registers = ["lr"]
