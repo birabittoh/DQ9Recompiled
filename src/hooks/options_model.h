@@ -214,6 +214,23 @@ inline bool StartsPart(const std::string& key) {
     return false;
 }
 
+// The Screen layout rows that only matter with 2nd screen pos. set to Over,
+// so they are not shown with Beside (value 0).
+inline bool NeedsOverPosition(const std::string& key) {
+    return key == "title.map_corner" || key == "title.map_opacity" ||
+           key == "title.battle_opacity" || key == "title.battle_stats_pos";
+}
+
+inline bool SecondScreenIsOver(const Model& model,
+                             const std::vector<NdsTitleMenuRow>& rows) {
+    for (const NdsTitleMenuRow& row : rows) {
+        if (row.key != "title.second_screen_over") continue;
+        const auto it = model.pending.find(row.key);
+        return (it != model.pending.end() ? it->second : row.value) != 0;
+    }
+    return true;
+}
+
 // `rows` in the pages' order, with the pages' sections.
 inline std::vector<NdsTitleMenuRow> Arranged(std::vector<NdsTitleMenuRow> rows) {
     std::vector<NdsTitleMenuRow> out;
@@ -407,6 +424,8 @@ inline void BuildRows(Model& model, size_t max_rows, bool back = true) {
     std::vector<std::vector<Row>> parts(1);
     for (const NdsTitleMenuRow& row : all) {
         if (Hidden(row)) continue;
+        if (NeedsOverPosition(row.key) && !SecondScreenIsOver(model, all))
+            continue;
         Row r;
         if (row.section == page) {
             r.kind = Row::Kind::Item;
