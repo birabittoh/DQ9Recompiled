@@ -143,3 +143,18 @@ name = "Dq9NameKeyboardVoice"
 registers = ["r0"]
 on_true = "return"
 on_false = "continue"
+
+# Canvass for guests: "all sent" (0x0205E498) only counts once it has held
+# for a few frames, so the MP frame with the end of the guest card goes out
+# before the link is ended. Handler: src/hooks/canvass_exchange.cpp.
+[[hook]]
+address = 0x02171840      # cmp r0, #0 (host exchange, after bl 0x0205E498)
+mode = "arm"
+name = "Dq9CanvassSendGrace"
+registers = ["r0", "r6"]
+
+[[hook]]
+address = 0x02171C98      # cmp r0, #0 (child exchange, after bl 0x0205E498)
+mode = "arm"
+name = "Dq9CanvassSendGrace"
+registers = ["r0", "r6"]
