@@ -389,8 +389,11 @@ NDS_TITLE_HOOK void Dq9WindowLayers() {
     const int32_t choice_scale = TextBoxScale();
     // The field walk's stick (no 2D window up, or the treasure search's
     // HUD): on a widened view it can be pressed anywhere, not only on the
-    // native screen.
+    // native screen. Not while a 3D choice window is up (Yes/No in the
+    // field's message window): the stick reads the touch 1:1, and the
+    // choice's entries need it mapped back through the window's scale.
     const bool stick = InGame() && dq9::FieldLoaded() && !dq9::InBattle() &&
+                       !choice &&
                        (!Window2dShown() || dq9::TreasureSearch());
     nds_title_set_touch_stick(stick);
     // With a 2D window up (the camp menu, a message box) a tap beyond the
