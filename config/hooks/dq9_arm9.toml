@@ -852,3 +852,33 @@ registers = ["sp"]
 on_true = "jump"
 jump_address = 0x0206BEA8 # add r11, r11, #1 (the no-break path)
 on_false = "continue"
+
+# Inn guests as live character models. Handler: src/hooks/inn_guests.cpp.
+#
+# The NPC spawner (0x0203D038) builds each inn guest (type 4) as character
+# slot 5, renders it into a sprite (0x0203E908) and frees the slot. For the
+# last guest in the list the second hook skips the sprite, the capture and
+# the teardown (0x0203D390..0x0203D468): the NPC keeps the character in
+# npc[7], which the NPC code positions and draws; the third steps its
+# animation each frame.
+[[hook]]
+address = 0x0203D038      # NPC spawner entry (r0 = NPC manager)
+mode = "arm"
+name = "Dq9InnGuestSpawn"
+registers = ["r0"]
+
+[[hook]]
+address = 0x0203D390      # mov r0, r9 (alloc the guest's sprite)
+mode = "arm"
+name = "Dq9InnGuestKeepModel"
+registers = ["r5", "r7"]
+on_true = "jump"
+jump_address = 0x0203D46C # ldr r0, [sp,#0x40] ; clear flag 0x400000
+
+[[hook]]
+address = 0x02040C3C      # per-frame NPC update entry (r0 = npc)
+mode = "arm"
+name = "Dq9InnGuestStep"
+registers = ["r0"]
+on_true = "jump"
+jump_address = 0x02052AF8 # character animation step, tail call
