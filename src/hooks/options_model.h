@@ -155,15 +155,18 @@ inline constexpr Placement kLayout[] = {
     {"netplay.enabled", "General"},
     {"netplay.account", "General"},  // only while a sign-in is wanted
     {"discord.activity", "General"},  // only with Discord support
+    {"display.second_screen_size", "Display/Screen layout"},
+    {"title.second_screen_over", "Display/Screen layout"},
+    {"title.map_corner", "Display/Screen layout"},
+    {"title.map_opacity", "Display/Screen layout"},
+    {"title.battle_opacity", "Display/Screen layout"},
+    {"title.battle_stats_pos", "Display/Screen layout"},
     {"display.fullscreen", "Display"},  // hidden on Android: always on
     {"title.fps_mode", "Display"},
     {"title.ui_size", "Display"},
     {"title.camera_mode", "Display"},
     {"display.resolution_scale", "Display"},
     {"display.scaling", "Display"},
-    {"display.second_screen_size", "Display"},
-    {"title.second_screen_over", "Display"},
-    {"title.battle_stats_pos", "Display"},
     {"display.show_fps", "Display"},
     {"display.smooth_3d", "Display"},  // never shown: fps_mode owns it
     {"title.mouse_friendly", "Controls/Pointer"},
@@ -262,7 +265,9 @@ inline std::string ValueText(const Model& model, const NdsTitleMenuRow& row) {
         }
         return std::to_string(value);
     default: {
-        const bool percent = row.key == "display.second_screen_size";
+        const bool percent = row.key == "display.second_screen_size" ||
+                             row.key == "title.map_opacity" ||
+                             row.key == "title.battle_opacity";
         return std::to_string(value) + (percent ? "%" : "");
     }
     }

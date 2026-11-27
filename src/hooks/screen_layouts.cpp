@@ -138,10 +138,51 @@ constexpr NdsTitleSetting kBattleStatsPos = {
 
 const int kBattleStatsPosId = nds_title_setting_register(&kBattleStatsPos);
 
+// How solid the see-through screen's fill is, in percent: the field's map and
+// the battle's commands each have their own.
+constexpr NdsTitleSetting kMapOpacity = {
+    "map_opacity",
+    "Map opacity",
+    "How solid the map is when drawn over the field.",
+    25, 100, 25,
+    nullptr, 0, nullptr,
+    50,
+};
+constexpr NdsTitleSetting kBattleOpacity = {
+    "battle_opacity",
+    "Battle opacity",
+    "How solid the commands are when drawn over the battle.",
+    25, 100, 25,
+    nullptr, 0, nullptr,
+    75,
+};
+
+const int kMapOpacityId = nds_title_setting_register(&kMapOpacity);
+const int kBattleOpacityId = nds_title_setting_register(&kBattleOpacity);
+
+// Which corner of the main screen the field's map sits in (the battle's
+// commands stay in the bottom-left).
+constexpr const char* kCornerChoices[] = {"Bottom left", "Bottom right",
+                                          "Top left", "Top right"};
+
+constexpr NdsTitleSetting kMapCorner = {
+    "map_corner",
+    "Map position",
+    "The corner of the screen the map is drawn in over the field.",
+    0, 3, 1,
+    kCornerChoices, sizeof(kCornerChoices) / sizeof(kCornerChoices[0]),
+    nullptr,
+    0,
+};
+
+const int kMapCornerId = nds_title_setting_register(&kMapCorner);
+
 constexpr int kMapPercent = 33;      // the field's map: a third
 constexpr int kBattlePercent = 50;   // the battle's commands: half
-constexpr uint32_t kMapFill = 128;   // how solid the fill is, of 255
-constexpr uint32_t kBattleFill = 179;
+// The fill's alpha, of 255, from Display > Screen layout > Map / Battle opacity.
+uint32_t Fill(int setting_id) {
+    return uint32_t(nds_title_setting_value(setting_id)) * 255 / 100;
+}
 
 // `fill` for the fill, rising to solid for the near-white frames and letters
 // (the darkest channel from 80% to 92% white). A black screen (a fade, the
@@ -614,11 +655,11 @@ int InsetOverlay(int screen, const uint32_t* pixels, int width,
         !g_over_at_swap.load(std::memory_order_relaxed))
         return 0;
     if (screen == 0) {
-        SeeThrough(pixels, width, out, kMapFill);
+        SeeThrough(pixels, width, out, Fill(kMapOpacityId));
         return OverPercent(kMapPercent);
     }
     if (!g_battle_at_swap.load(std::memory_order_relaxed)) return 0;
-    SeeThrough(pixels, width, out, kBattleFill);
+    SeeThrough(pixels, width, out, Fill(kBattleOpacityId));
     OutsideFrames(pixels, width, out);
     BattleHud hud;
     {
@@ -640,11 +681,18 @@ bool Wide() {
            !dq9::MoviePlaying();
 }
 
+// Called once per presented frame on the frontend thread.
+int InsetCorner() {
+    return g_battle_at_swap.load(std::memory_order_relaxed)
+        ? 0 : nds_title_setting_value(kMapCornerId);
+}
+
 const bool kRegistered = (nds_title_set_stacked_layout_query(Wanted),
                           nds_title_set_wide_query(Wide),
                           nds_title_set_stacked_gap_query(StackedGap),
                           nds_title_set_inset_below_query(InsetBelow),
                           nds_title_set_inset_overlay_query(InsetOverlay),
+                          nds_title_set_inset_corner_query(InsetCorner),
                           true);
 
 }  // namespace
