@@ -24,11 +24,20 @@
 // 0x02052AF8(character): animation and model transform. The NPC's facing set
 // by talking (0x02040B3C) goes through the same character.
 //
+// Their textures and palettes all go to the same texture VRAM: each part's
+// blocks come from the scene's VRAM manager (scene+3068), reset for every
+// build (0x0207DE58 per part, sizes from a fixed table). Once a guest is
+// built its blocks are copied into texture page i+1 (runner gpu3d.h), and
+// while its character is drawn its materials carry that page in their
+// POLYGON_ATTR (bits the DS ignores), so its polygons read their textures
+// from the page.
+//
 // All bookkeeping lives in title RAM, so it is guest state: savestates carry
 // it and the hooks keep none of their own.
 #include <cstdint>
 #include <cstdio>
 
+#include "gpu3d.h"
 #include "io.h"
 #include "title_hooks.h"
 
@@ -46,6 +55,7 @@ constexpr uint32_t kRamSize = 0x400000u;
 constexpr uint32_t kMaxGuests = 32;
 constexpr uint32_t kBuilding = kRam + 0x0;    // guest index + 1 while built
 constexpr uint32_t kNextGuest = kRam + 0x4;   // guests built by this spawn
+constexpr uint32_t kDrawing = kRam + 0x8;     // texture page while one is drawn
 constexpr uint32_t kSlots = kRam + 0x100;     // per guest: 12 slot entries
 constexpr uint32_t kSlotsStride = 0x40;
 constexpr uint32_t kHeaders = kRam + 0x1000;  // per guest: heap + allocator
@@ -70,6 +80,50 @@ int GuestOfRecord(uint32_t rec) {
 
 int GuestOfCharacter(uint32_t chr) {
     return chr ? GuestOfRecord(bus_read_u32(chr + 340)) : -1;
+}
+
+// Texture pages 1..31 (melonDS::kTexPages), guest i on page i + 1; the
+// page in POLYGON_ATTR bits 21-23 and 30-31 (melonDS::TexPageAttrBits).
+constexpr uint32_t kTexPages = 32;
+uint32_t PageAttrBits(uint32_t page) {
+    return ((page & 7u) << 21) | ((page & 0x18u) << 27);
+}
+constexpr uint32_t kPageAttrMask = (7u << 21) | (3u << 30);
+
+// The texture and palette VRAM a guest's parts got (0x0207DE58: the part
+// sub-managers at rec+204+112*k, k < 10, and rec+1384), as byte ranges.
+// Texture keys (0x020BB598): address (key & 0xFFFF) << 3, size bits 16..30
+// << 4; palette keys (0x020BB7DC): address (key & 0xFFFF) << 3, size
+// (key >> 16) << 3.
+struct VramRange { uint32_t lo = ~0u, hi = 0; };
+void CaptureTextures(int i) {
+    const uint32_t rec = kRecords + i * kRecordStride;
+    VramRange tex, pal;
+    for (uint32_t k = 0; k < 11; ++k) {
+        const uint32_t mgr = k < 10 ? rec + 204 + 112 * k : rec + 1384;
+        const uint32_t tkey = bus_read_u32(mgr + 80);
+        const uint32_t pkey = bus_read_u32(mgr + 104);
+        if (tkey) {
+            const uint32_t lo = (tkey & 0xFFFFu) << 3;
+            const uint32_t size = ((tkey >> 16) & 0x7FFFu) << 4;
+            if (lo < tex.lo) tex.lo = lo;
+            if (lo + size > tex.hi) tex.hi = lo + size;
+        }
+        if (pkey) {
+            const uint32_t lo = (pkey & 0xFFFFu) << 3;
+            const uint32_t size = (pkey >> 16) << 3;
+            if (lo < pal.lo) pal.lo = lo;
+            if (lo + size > pal.hi) pal.hi = lo + size;
+        }
+    }
+    const uint32_t page = static_cast<uint32_t>(i) + 1;
+    if (page >= kTexPages || tex.hi <= tex.lo) return;
+    if (pal.hi <= pal.lo) pal = {0, 0};
+    const bool ok = nds_gpu3d_texture_page_capture(page, tex.lo, tex.hi - tex.lo,
+                                                   pal.lo, pal.hi - pal.lo);
+    std::fprintf(stderr,
+                 "[dq9-guest] page %u: texture 0x%05X..0x%05X palette 0x%05X..0x%05X%s\n",
+                 page, tex.lo, tex.hi, pal.lo, pal.hi, ok ? "" : " (does not fit)");
 }
 
 // Puts guest i's character and subparts back in slot 5's table entries.
@@ -199,6 +253,7 @@ NDS_TITLE_HOOK bool Dq9InnGuestKeepModel(uint32_t* entry, uint32_t* npc) {
     }
     std::fprintf(stderr, "[dq9-guest] live model %d npc=0x%08X char=0x%08X\n",
                  i, *npc, chr);
+    CaptureTextures(i);
     return true;
 }
 
@@ -206,7 +261,27 @@ NDS_TITLE_HOOK bool Dq9InnGuestKeepModel(uint32_t* entry, uint32_t* npc) {
 // calls the party draw 0x0218EAFC(scene, slot).
 NDS_TITLE_HOOK void Dq9InnGuestDraw(uint32_t* r1) {
     const int i = GuestOfCharacter(*r1);
-    if (i >= 0) SelectGuest(i);
+    if (i < 0) return;
+    SelectGuest(i);
+    bus_write_u32(kDrawing, static_cast<uint32_t>(i) + 1 < kTexPages ? i + 1 : 0);
+}
+
+// 0x020409B0, back from that draw.
+NDS_TITLE_HOOK void Dq9InnGuestDrawEnd() {
+    if (nds_bus_title_ram_contains(kRam) && bus_read_u32(kDrawing))
+        bus_write_u32(kDrawing, 0);
+}
+
+// NNS G3D's material send (0x020B45F0 at 0x020B49CC, 0x020B6704 at
+// 0x020B67C8), just before it packs DIF_AMB, SPE_EMI and POLYGON_ATTR from
+// the material's result (r5 / r4, POLYGON_ATTR at +0xC): while a guest is
+// drawn, its texture page goes into the attribute's unused bits.
+NDS_TITLE_HOOK void Dq9InnGuestMaterial(uint32_t* mat) {
+    if (!nds_bus_title_ram_contains(kRam)) return;
+    const uint32_t page = bus_read_u32(kDrawing);
+    const uint32_t attr = bus_read_u32(*mat + 0xC);
+    const uint32_t tagged = (attr & ~kPageAttrMask) | PageAttrBits(page);
+    if (tagged != attr) bus_write_u32(*mat + 0xC, tagged);
 }
 
 // Talking sets the NPC's target yaw (0x02040B00), for a character at +724,

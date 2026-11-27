@@ -863,7 +863,8 @@ on_false = "continue"
 # capture and the teardown (0x0203D390..0x0203D468): the NPC keeps the
 # character in npc[7], which the NPC code positions and draws. Draw and
 # Step put the guest's slot-5 entries back before its draw and its
-# per-frame animation step.
+# per-frame animation step. Draw / DrawEnd bracket the guest's draw, during
+# which Material puts its texture page into each material's POLYGON_ATTR.
 [[hook]]
 address = 0x0203D038      # NPC spawner entry (r0 = NPC manager)
 mode = "arm"
@@ -893,6 +894,23 @@ address = 0x020409A0      # ldrsh r4, [r1,#4] (NPC draw, r1 = character)
 mode = "arm"
 name = "Dq9InnGuestDraw"
 registers = ["r1"]
+
+[[hook]]
+address = 0x020409B0      # mov r0, #1 (back from the party draw)
+mode = "arm"
+name = "Dq9InnGuestDrawEnd"
+
+[[hook]]
+address = 0x020B49CC      # ldr r0, =0x293130 (NNS material send, r5 = result)
+mode = "arm"
+name = "Dq9InnGuestMaterial"
+registers = ["r5"]
+
+[[hook]]
+address = 0x020B67C8      # ldr r0, =0x293130 (NNS material send, r4 = result)
+mode = "arm"
+name = "Dq9InnGuestMaterial"
+registers = ["r4"]
 
 [[hook]]
 address = 0x02040C3C      # per-frame NPC update entry (r0 = npc)
