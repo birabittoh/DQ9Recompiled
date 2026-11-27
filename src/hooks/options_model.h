@@ -186,6 +186,8 @@ inline constexpr Placement kLayout[] = {
     {"input.key_right", "Controls/Keyboard"},
     {"input.key_fast_forward", "Controls/Keyboard"},  // also without the others
     {"input.gamepad_layout", "Controls"},  // hidden with custom bindings
+    {"title.ff_behavior", "Controls"},
+    {"title.ff_speed", "Controls"},
     {"title.skip_intros", "Quality of life"},
     {"title.skip_text", "Quality of life"},
     {"title.unlimited_quests", "Quality of life"},
