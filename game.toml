@@ -109,7 +109,7 @@ enabled = false
 game_name = "DQ9Recompiled"
 # lobby_name = "Marco's world"   # empty: "<your name>'s lobby"
 lobby_url = "ws://dq9.birabittoh.duckdns.org:80"  # port needed: sign-in uses it too (default 8765)
-# stun_server = "stun.l.google.com:19302"  # Online (alt) only; empty: this one
+# stun_server = "stun.l.google.com:19302"  # Online (direct) STUN server; empty: this one
 
 # 64 KiB EEPROM, confirmed from a working emulator save of YDQP (a raw
 # 65,536-byte image starting "DRAGON QUEST IX"). The runner reads and writes

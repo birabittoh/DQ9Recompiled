@@ -39,7 +39,7 @@ Feel free to visit DQ9Recompiled's [official Discord server](https://discord.gg/
 * **Local DLC**: Sellma's shop and DLC quests work without any external service.
 * **Options**: every option is displayed natively in-game.
 * **Multiplayer**: local wireless over the LAN, and online lobbies with Netplay,
-  through the relay or, with "Online (alt)", direct STUN connections.
+  direct STUN connections or, with "Online (alt)", through the relay.
 
 ## Play
 
