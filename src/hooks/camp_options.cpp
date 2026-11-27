@@ -280,13 +280,15 @@ NDS_TITLE_HOOK void Dq9CampOptionsSize(uint32_t* r4, uint32_t* r6) {
     // its tallest part, with room for the arrows and "n/N" under it.
     const bool paged = g_camp.open && g_camp.parts > 1;
     const uint32_t shown = paged ? g_camp.tallest : count;
+    // The lines follow the tallest part too, so every part of a page lays its
+    // title out like the first one (the text is centred by them).
     if (count > 8u || (g_camp.open && count > 0u)) {
         // One more tile on a page: the margin under the last row.
         bus_write_u16(*r4 + kNextHeight, static_cast<uint16_t>(
             3u + 2u * shown + (paged ? 2u : g_camp.open ? 1u : 0u)));
         bus_write_u16(*r4 + kNextLines, static_cast<uint16_t>(
             static_cast<int>(bus_read_u8(*r6 + kLayoutLines)) +
-            static_cast<int>(count) - 7));
+            static_cast<int>(shown) - 7));
     }
 }
 
