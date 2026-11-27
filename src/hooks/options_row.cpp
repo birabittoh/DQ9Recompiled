@@ -314,7 +314,7 @@ void ShowDescription() {
     g_menu.described = index;
     std::vector<std::string> lines;
     if (index < g_menu.rows.size())
-        lines = Wrap(DescriptionText(g_menu.rows[index]), kDescLineChars,
+        lines = Wrap(DescriptionText(g_menu, g_menu.rows[index]), kDescLineChars,
                      kDescLines);
     for (uint32_t i = 0; i < kDescLines; ++i) {
         const uint32_t cell = FindTyped(scene, kFirstDescCell + i, kTypeCell);

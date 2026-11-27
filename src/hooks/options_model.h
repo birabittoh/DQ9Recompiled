@@ -328,16 +328,20 @@ inline std::string RowText(const Model& model, const Row& row) {
 }
 
 // The row's description, on one line ("" for Back).
-inline std::string DescriptionText(const Row& row) {
+inline std::string DescriptionText(const Model& model, const Row& row) {
     switch (row.kind) {
     case Row::Kind::Category:
         return Text("d_cat_" + Slug(row.section), "");
     case Row::Kind::Item:
         if (Locked(row.item)) return Text("d_locked_by_host", "Set by the host.");
-        if (IsNetplayToggle(row.item))  // its description is the server's state
+        if (IsNetplayToggle(row.item)) {  // its description is the server's state
+            // Local never contacts the server: no status to show.
+            if (ValueOf(model, row.item) == 0)
+                return Text("d_netplay_enabled", "");
             return Text("d_netplay_enabled", "") + " " +
                    Text("server_status", "Server status:") + " " +
                    Text("server_" + row.item.description, row.item.description);
+        }
         // The keyboard's rows share theirs, but for one with its own.
         if (row.item.type == NdsTitleMenuRowType::Key) {
             const std::string own = Text("d_" + Slug(row.item.key), "");
@@ -479,7 +483,7 @@ inline std::string Signature(const Model& model) {
     for (const Row& row : model.rows) {
         out += RowText(model, row);
         out += '\x01';
-        out += DescriptionText(row);
+        out += DescriptionText(model, row);
         out += '\x02';
     }
     return out;

@@ -334,7 +334,7 @@ NDS_TITLE_HOOK void Dq9CampOptionsDescription(uint32_t* r0, uint32_t* r5) {
     std::string text;
     if (g_camp.open) {
         if (cursor >= 0 && static_cast<size_t>(cursor) < g_camp.rows.size())
-            text = DescriptionText(g_camp.rows[static_cast<size_t>(cursor)]);
+            text = DescriptionText(g_camp, g_camp.rows[static_cast<size_t>(cursor)]);
     } else if (cursor >= 0 && cursor == g_camp.options_index) {
         text = dq9::Tr("camp_menu", "options_description", Language());
     } else {
