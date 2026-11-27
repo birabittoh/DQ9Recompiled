@@ -102,6 +102,8 @@ struct Camp : Model {
     bool reopen = false;        // at the step's end: open the list again
     bool reopening = false;     // the list is being opened by `reopen`
     bool redraw_list = false;   // draw the list window again
+    bool redraw_arrows = false; // once, after a page in parts opens: its arrows
+                                // are drawn only by a later draw of the window
     int cursor_on_open = -1;    // where the reopened list puts its cursor
     uint32_t polled = 0;        // frames, to look for changed rows now and then
 };
@@ -193,9 +195,21 @@ std::string Markup(const std::string& text, bool escape_percent = false) {
     return out;
 }
 
-// No Back row: B, or the pen outside the window, goes up one page.
+// The rows of a part when a page has several: the game's own list limit. A
+// window of 9 rows plus the arrows and "n/N" is taller than the screen allows
+// (the arrows and the indicator fall off its bottom).
+constexpr size_t kPartRows = 8u;
+
+// No Back row. A page that fits shows all its rows (up to kMaxEntries); a
+// longer one is shown in parts of kPartRows.
+void BuildPage(Model& model) {
+    BuildRows(model, kMaxEntries, false);
+    if (model.parts > 1) BuildRows(model, kPartRows, false);
+}
+
+// B, or the pen outside the window, goes up one page.
 void Rebuild() {
-    BuildRows(g_camp, kMaxEntries, false);
+    BuildPage(g_camp);
     g_camp.signature = Signature(g_camp);
 }
 
@@ -328,6 +342,25 @@ NDS_TITLE_HOOK void Dq9CampOptionsDescription(uint32_t* r0, uint32_t* r5) {
     *r0 = kDescText;
 }
 
+// The page indicator of the list window while a page in parts is open: the
+// window list's step (0x0205D0F0) writes the list widget's own page and count
+// (one page, as the Misc. list is) into it every frame; these two, on its
+// calls, put the part and the number of parts in. See dq9_arm9.toml.
+bool PartsWindow(uint32_t window) {
+    return g_camp.open && g_camp.parts > 1 && InMainRam(window, kWindowSize) &&
+           bus_read_u8(window + kWinId) == kWindowMisc;
+}
+
+NDS_TITLE_HOOK void Dq9CampOptionsIndicatorPage(uint32_t* window,
+                                                uint32_t* page) {
+    if (PartsWindow(*window)) *page = g_camp.part[g_camp.section];
+}
+
+NDS_TITLE_HOOK void Dq9CampOptionsIndicatorPages(uint32_t* window,
+                                                 uint32_t* pages) {
+    if (PartsWindow(*window)) *pages = g_camp.parts;
+}
+
 // 0x021661B0, the Misc. state opening its windows (sub-state 0), after it
 // put the cursor on the first entry: r8 = the camp menu. Opened by the
 // hooks, the cursor goes where the page (or Misc.) had it; opened by the
@@ -338,6 +371,7 @@ NDS_TITLE_HOOK void Dq9CampOptionsOpen(uint32_t* r8) {
         return;
     }
     g_camp.reopening = false;
+    g_camp.redraw_arrows = g_camp.open && g_camp.parts > 1;
     if (g_camp.cursor_on_open >= 0)
         bus_write_u16(*r8 + kCampMiscCursor,
                       static_cast<uint16_t>(g_camp.cursor_on_open));
@@ -355,11 +389,15 @@ NDS_TITLE_HOOK bool Dq9CampOptionsFrame(uint32_t* r8) {
         return true;
     }
     if (!g_camp.open) return false;
+    if (g_camp.redraw_arrows) {
+        g_camp.redraw_arrows = false;
+        g_camp.redraw_list = true;
+    }
     // Rows the frontend changed on its own (a key row waiting for its key,
     // then bound) draw the list again; a few times a second is enough.
     if (++g_camp.polled % 10 == 0) {
         Camp probe = g_camp;
-        BuildRows(probe, kMaxEntries, false);
+        BuildPage(probe);
         if (Signature(probe) != g_camp.signature &&
             probe.rows.size() == g_camp.rows.size()) {
             Rebuild();

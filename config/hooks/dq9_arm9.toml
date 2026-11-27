@@ -932,3 +932,21 @@ address = 0x020C9BF0      # OS_Terminate (halt loop) entry
 mode = "arm"
 name = "Dq9TerminateLog"
 registers = ["lr"]
+
+# The camp menu's Options pages in parts (src/hooks/camp_options.cpp). The
+# window list's step 0x0205D0F0 copies the list widget's page and page count
+# into the window's page indicator every frame (0x0205043C, 0x02050450); the
+# Misc. list is one page of all its rows to the widget, so a page in parts
+# would read "1/1". The hooks, on those two calls (r0 = the window, r1 = the
+# value), put the part and the number of parts in instead.
+[[hook]]
+address = 0x0205D170      # bl 0x0205043C (r0 = window, r1 = page)
+mode = "arm"
+name = "Dq9CampOptionsIndicatorPage"
+registers = ["r0", "r1"]
+
+[[hook]]
+address = 0x0205D188      # bl 0x02050450 (r0 = window, r1 = page count)
+mode = "arm"
+name = "Dq9CampOptionsIndicatorPages"
+registers = ["r0", "r1"]
