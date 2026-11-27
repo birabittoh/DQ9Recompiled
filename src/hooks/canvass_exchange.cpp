@@ -12,16 +12,34 @@
 // round (a PC hosting a phone lost the last 4 of 19 messages every time).
 // "Sent" only counts once it has held for a few frames, as the game's own
 // 3 s exchange timeout leaves room for.
+//
+// Frames alone are not enough over the internet: a client only sends a
+// reply, which carries its messages, when a host cmd comes in, and through
+// a relay the cmds arrive in bursts with gaps longer than the grace. So
+// "sent" also waits until this side has put two more MP frames of its own
+// (host: cmds, client: replies) on the link, the one with the last
+// messages and the next. Frames on the link arrive in order, the end of the
+// link after them.
 #include <cstdint>
 
 #include "title_hooks.h"
+#include "wifi_net.h"
 
 namespace {
 
 constexpr int kGraceFrames = 6;
+constexpr uint64_t kGraceMpFrames = 2;
 
 uint32_t g_obj = 0;
 int g_sent_frames = 0;
+uint64_t g_mp_base = 0;
+
+// MP cmds and replies this runner has sent so far.
+uint64_t MpFramesSent() {
+    NdsLocalMpStats stats;
+    if (!nds_wifi_local_mp_stats(&stats)) return 0;
+    return stats.sent_by_type[1] + stats.sent_by_type[2];
+}
 
 }  // namespace
 
@@ -36,5 +54,8 @@ NDS_TITLE_HOOK void Dq9CanvassSendGrace(uint32_t* sent, uint32_t* obj) {
         g_sent_frames = 0;
         return;
     }
-    if (++g_sent_frames < kGraceFrames) *sent = 0;
+    const uint64_t mp = MpFramesSent();
+    if (g_sent_frames++ == 0) g_mp_base = mp;
+    if (g_sent_frames < kGraceFrames || mp - g_mp_base < kGraceMpFrames)
+        *sent = 0;
 }
