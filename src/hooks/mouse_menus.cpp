@@ -909,6 +909,50 @@ void NoteTopClick() {
         g_msg_click_at = MsgClock::now();
     }
 }
+
+// The Defeated Monster List (records page, overlay 14 in slot 1) shows the
+// chosen monster on the top screen: its 3D model in a frame with the L and R
+// arrows in its bottom corners (L / R turn the model), and its description,
+// in pages, beside them (Y turns the page, wrapping; A plays one of the
+// model's animations at random). Clicks there press those keys: held on an
+// arrow, L or R while the button stays down; on the model, A; on the
+// description, Y. Top-screen DS pixels.
+struct Rect { int x0, y0, x1, y1; };
+constexpr Rect kListArrowL = {8, 105, 30, 124};
+constexpr Rect kListArrowR = {83, 105, 105, 124};
+constexpr Rect kListModel = {8, 22, 105, 124};
+constexpr Rect kListText = {106, 116, 255, 188};
+constexpr uint32_t kKeyA = 0x001u, kKeyR = 0x100u, kKeyL = 0x200u,
+                   kKeyY = 0x800u;
+
+bool Inside(const Rect& r, int x, int y) {
+    return x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1;
+}
+
+// On the monster list: presses the keys for the top screen's mouse and
+// takes its clicks (true). False elsewhere, the clicks left to the caller.
+bool MonsterListTop(uint32_t* held) {
+    constexpr int kMonsterListOverlay = 14;
+    if (dq9::LoadedOverlay(1) != kMonsterListOverlay || !dq9::RecordsPage())
+        return false;
+    int x = 0, y = 0;
+    if (nds_title_top_drag(&x, &y)) {
+        if (Inside(kListArrowL, x, y)) *held |= kKeyL;
+        else if (Inside(kListArrowR, x, y)) *held |= kKeyR;
+    }
+    if (g_msg_click_seen == g_msg_click_used) return true;
+    g_msg_click_used = g_msg_click_seen;
+    if (MsgClock::now() - g_msg_click_at >= std::chrono::milliseconds(250))
+        return true;
+    nds_title_top_click(&x, &y);
+    // A click quicker than a frame leaves no drag: press the arrow's key
+    // for this frame at least.
+    if (Inside(kListArrowL, x, y)) *held |= kKeyL;
+    else if (Inside(kListArrowR, x, y)) *held |= kKeyR;
+    else if (Inside(kListModel, x, y)) *held |= kKeyA;
+    else if (Inside(kListText, x, y)) *held |= kKeyY;
+    return true;
+}
 }  // namespace
 
 // The church's power-OFF screen: a press there resets to the title
@@ -962,6 +1006,7 @@ NDS_TITLE_HOOK void Dq9MessageTopClick(uint32_t* held) {
         bus_read_u32(messages + 2464u) == 3u && still >= 8 &&
         !dq9::RecordsPage())
         *held |= 1u;  // A
+    if (MonsterListTop(held)) return;
     if (g_msg_click_seen == g_msg_click_used) return;
     g_msg_click_used = g_msg_click_seen;
     if (MsgClock::now() - g_msg_click_at >= std::chrono::milliseconds(250))
