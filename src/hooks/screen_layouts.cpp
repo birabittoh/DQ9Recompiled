@@ -704,7 +704,10 @@ void SampleScreenLayout() {
     const bool battle = InBattle();
     g_battle_at_swap.store(battle, std::memory_order_relaxed);
     const bool running = GameModeRunning();
-    const bool page = !battle && FullScreenPage();
+    // The records pages and the Krak Pot also route engine A to the top LCD,
+    // so they pass for a battle: they stay pages all the same (4:3, no
+    // second screen over them).
+    const bool page = FullScreenPage();
     g_over_at_swap.store(running && !page, std::memory_order_relaxed);
     const bool wide = running && !page && (battle || FieldLoaded());
     static int changed_swaps = 0;

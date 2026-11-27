@@ -153,7 +153,26 @@ inline bool NewGameOpening() { return bus_read_u8(0x020F33D8 + 4) == 2; }
 // with the records overlay still in slot 1, and sets BG1CNT 0x1D00 (BG2
 // 0x1E01, BG3 0x1F0B; BLDCNT 0x0144). The field keeps 0x0004 there after
 // it closes.
+//
+// The Item List and Accolades Earnt (records page > either) load overlay 4
+// in slot 0, the field's overlay 11 back in slot 1, BLDCNT 0x0844. Item
+// List: BG1CNT 0x1C08, BG2 0x1D09 (BG3 0x1E03, then 0x1E02); Accolades:
+// BG1CNT 0x0E00, BG2 0x0F01 (BG3 0x1F0A). The other overlay 4 users have
+// 0x1D00 (Attributes), 0x1D01 (treasure map), the field's 0x0004 (grottoes)
+// and 0x0104 / 0x0105 (title) there.
+inline bool RecordsListPage() {
+    constexpr uint32_t kFieldSlot = 0;
+    constexpr int kListOverlay = 4;
+    constexpr uint32_t kBg1cntA = 0x0400000A;
+    constexpr uint32_t kBg2cntA = 0x0400000C;
+    if (LoadedOverlay(kFieldSlot) != kListOverlay) return false;
+    const uint16_t bg1 = bus_read_u16(kBg1cntA);
+    const uint16_t bg2 = bus_read_u16(kBg2cntA);
+    return (bg1 == 0x1C08 && bg2 == 0x1D09) || (bg1 == 0x0E00 && bg2 == 0x0F01);
+}
+
 inline bool RecordsPage() {
+    if (RecordsListPage()) return true;
     constexpr uint32_t kFieldSlot = 0;
     constexpr uint32_t kMenuSlot = 1;
     constexpr int kRecordsOverlay = 8;
