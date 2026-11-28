@@ -432,4 +432,8 @@ NDS_TITLE_HOOK void Dq9WindowLayers() {
         nds_title_set_touch_unscaled(!Window2dShown() ||
                                      dq9::TreasureSearch());
     }
+    // The treasure search's HUD button (Put Map Away) is drawn scaled over
+    // that stick: a press on it is mapped back through the scale.
+    nds_title_set_touch_ui_hit(InGame() && scale < 1.0 &&
+                               dq9::TreasureSearch());
 }
