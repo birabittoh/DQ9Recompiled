@@ -20,6 +20,17 @@ mode = "arm"
 name = "Dq9MouseMenuListGreen"
 registers = ["cpsr"]
 
+# Language: the camp menu is made once per field and only its state 0
+# (0x0215624C) loads its text (str_tm_<LG>.nat into camp+0x20) and icons.
+# Its step (0x02155BA8) runs the state at +0x1BB8 from the table 0x0216CD74;
+# the hook, before the state is read, sends a menu that opens after a
+# language change through state 0 again. Handler: src/hooks/language.cpp.
+[[hook]]
+address = 0x02155C34      # ldr r2, [r0, #0xBB8] (r5 = the camp menu)
+mode = "arm"
+name = "Dq9CampTextLanguage"
+registers = ["r5"]
+
 # The Misc. list's "Options" row and its pages. Handler:
 # src/hooks/camp_options.cpp; the text is res/lang/*.toml ([main_menu]
 # options, [camp_menu], [options]).

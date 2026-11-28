@@ -143,10 +143,16 @@ registers = ["r2"]
 # Text loaded once per session: overlay 17 sets up an arena (0x020E50FC,
 # descriptor at 0x02153680) and has 0x020E5124 reset it and load
 # article_<LG>.nat and strstd_<LG>.nat into two slots at 0x02153694. Every
-# other text table is loaded with the screen or object that uses it. At the
-# main loop's head (0x02000E2C: r0-r3, r12, lr and flags dead), when the
-# language in the context differs from the wanted one, the hook stores the
-# new one and calls 0x020E5124 again with lr = 0x02000E2C.
+# other text table is loaded with the screen or object that uses it. The
+# first hook notes the language of each load. At the boot loop's head
+# (0x02000E2C: r0-r3, r12, lr and flags dead), when the tables are in
+# another language than the wanted one, the hook calls 0x020E5124 again
+# with lr = 0x02000E2C.
+[[hook]]
+address = 0x020E5124      # entry (the session text tables are loaded)
+mode = "arm"
+name = "Dq9SessionTextLoad"
+
 [[hook]]
 address = 0x02000E2C      # mov r0, r7 (main loop head)
 mode = "arm"
@@ -154,6 +160,31 @@ name = "Dq9LanguageReload"
 registers = ["lr"]
 on_true = "jump"
 jump_address = 0x020E5124 # reload the articles and standard strings
+
+# The field, towns and battles run ov17's loop (0x0218B710) instead, which
+# ends its pass with G3_SwapBuffers 0x020D86E0(1, 0), called from
+# 0x0218C7A8 (r10 = the loop's object). The hook, at its second
+# instruction (r0, r1 the arguments, r2 = 0x04000540, r3 and r12 not yet
+# used), calls the game's functions it needs one at a time through a
+# `bx r12` with lr = 0x020D86E4, and puts the registers back after the
+# last: the session text loader, and the requests, heap calls and parse
+# that reload the actions' names (below) and the open camp menu's text.
+[[hook]]
+address = 0x020D86E4      # orr r1, r0, r1, lsl #1 (G3_SwapBuffers)
+mode = "arm"
+name = "Dq9LanguageReloadField"
+registers = ["r0", "r1", "r2", "r3", "r10", "r12", "lr"]
+on_true = "jump"
+jump_address = 0x0200171C # bx r12
+
+# The actions' table (spell and ability names, actdt_a_<LG>.nat), loaded
+# by the field loop's start with 0x02079910(table 0x02108E10, heap): its
+# entry notes the language, which the hook above reloads it in when it
+# changes.
+[[hook]]
+address = 0x02079910      # entry (the actions' table is loaded)
+mode = "arm"
+name = "Dq9ActionTableLoad"
 
 # The title's menu text and logo (str_op_<LG>.bin, bg_up_<LG>.pac),
 # reloaded when the language changes on the title, parse into memory of
