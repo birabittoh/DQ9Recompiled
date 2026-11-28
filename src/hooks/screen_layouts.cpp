@@ -460,19 +460,38 @@ BattleHud ReadBattleHud() {
         for (int i = 0; i < opened; ++i)
             if (rects[i].across) right = std::max(right, rects[i].x1);
         bool first = true;
-        for (int i = 0; i < opened; ++i) {
+        bool taken[7]{};
+        const auto take = [&](int i) {
             const Rect& r = rects[i];
-            if (r.x1 < right - 8) continue;
             hud.sub_x0 = first ? r.x0 : std::min(hud.sub_x0, r.x0);
             hud.sub_y0 = first ? r.y0 : std::min(hud.sub_y0, r.y0);
             hud.sub_x1 = first ? r.x1 : std::max(hud.sub_x1, r.x1);
             hud.sub_y1 = first ? r.y1 : std::max(hud.sub_y1, r.y1);
             first = false;
+            taken[i] = true;
             int* out = hud.sub_rect[hud.subs++];
             out[0] = r.x0;
             out[1] = r.y0;
             out[2] = r.x1;
             out[3] = r.y1;
+        };
+        for (int i = 0; i < opened; ++i)
+            if (rects[i].x1 >= right - 8) take(i);
+        // A window opened over them from the left (not enough MP...) goes
+        // with them, whole; the commands window, which they cover only up
+        // to 8 pixels, stays with its panel.
+        const int listed = hud.subs;
+        for (int i = 0; i < opened; ++i) {
+            if (taken[i]) continue;
+            const Rect& r = rects[i];
+            for (int s = 0; s < listed; ++s) {
+                const int* o = hud.sub_rect[s];
+                if (r.x0 < o[0] && r.x1 > o[0] + 8 && r.y0 < o[3] &&
+                    r.y1 > o[1]) {
+                    take(i);
+                    break;
+                }
+            }
         }
     }
     hud.valid = hud.panels > 0 || hud.windows;
