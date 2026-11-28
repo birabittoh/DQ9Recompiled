@@ -287,6 +287,21 @@ inline bool TreasureSearch() {
            bus_read_u16(kBldalphaA) == 0x0709;
 }
 
+// The skill points screen after a level-up in battle: the skill's list on
+// the top LCD, the points menu and the character's stats on the bottom one.
+// It loads overlay 13 in slot 1 (the field's 11 there through the rest of
+// the battle), with overlay 23 in slot 3, while the battle's end message is
+// still up; the screen itself sets engine A's BG1CNT to 0x1D00 (0x1D02
+// before). Engine A then shows only BG1 and the OBJs: no 3D under it.
+inline bool BattleSkillPoints() {
+    constexpr uint32_t kMenuSlot = 1;
+    constexpr int kSkillPointsOverlay = 13;
+    constexpr uint32_t kBg1cntA = 0x0400000A;
+    constexpr uint16_t kPageBg1 = 0x1D00;
+    return LoadedOverlay(kMenuSlot) == kSkillPointsOverlay &&
+           bus_read_u16(kBg1cntA) == kPageBg1;
+}
+
 // Full-screen pages, left as on the DS by the UI size and the camera
 // distance: the battle records pages, the character pages, the inn's and
 // the treasure map.

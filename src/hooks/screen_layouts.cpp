@@ -725,8 +725,9 @@ void SampleScreenLayout() {
     const bool running = GameModeRunning();
     // The records pages and the Krak Pot also route engine A to the top LCD,
     // so they pass for a battle: they stay pages all the same (4:3, no
-    // second screen over them).
-    const bool page = FullScreenPage();
+    // second screen over them). So does the skill points screen after a
+    // level-up, which would put its menu over the skills list.
+    const bool page = FullScreenPage() || (battle && BattleSkillPoints());
     g_over_at_swap.store(running && !page, std::memory_order_relaxed);
     const bool wide = running && !page && (battle || FieldLoaded());
     static int changed_swaps = 0;
